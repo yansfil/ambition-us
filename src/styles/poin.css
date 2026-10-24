@@ -1,0 +1,65 @@
+/* 시안 v4(design/board.html)에서 뽑은 공용 토큰과 poin 레이어 프리미티브.
+   채팅 쪽: 흰 배경, 흰 카드, 검은 알약. poin 쪽: 어두운 유리 + 노을빛 오브. */
+:root {
+  --c-text: #18181b;
+  --c-muted: #5b5560;
+  --c-faint: rgba(24, 24, 27, 0.42);
+  --c-line: #eceaec;
+  --c-line2: #f0eef0;
+  --c-pill: #1a1a1a;
+  --c-soft: #f3f1f2;
+  --c-warn-text: #c2410c;
+
+  --glass-light: rgba(250, 250, 250, 0.9);
+  --glass-dark: rgba(20, 20, 22, 0.9);
+  --on-dark: #f5f5f5;
+  --on-dark-muted: rgba(245, 245, 245, 0.55);
+  --hair-dark: rgba(255, 255, 255, 0.09);
+  --poin-amber: #f5aa64;
+  --heat: linear-gradient(90deg, #f55702 0%, #f58c02 35%, #f5aa64 60%, #eeaeca 100%);
+  --spring: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+/* poin 레이어 유리: 어두운 바탕 + 노을색 얇은 테두리 */
+.poin-glass {
+  background:
+    linear-gradient(var(--glass-dark), var(--glass-dark)) padding-box,
+    linear-gradient(130deg, rgba(245, 120, 2, 0.9), rgba(238, 174, 202, 0.55) 45%, rgba(148, 201, 233, 0.35)) border-box;
+  border: 1px solid transparent;
+  backdrop-filter: blur(22px) saturate(1.5);
+  color: var(--on-dark);
+}
+
+/* poin 표지: 노을빛 오브 */
+.poin-orb {
+  width: 10px;
+  height: 10px;
+  border-radius: 9999px;
+  flex: none;
+  background: radial-gradient(circle at 35% 30%, #ffe2c4 0%, #f58c02 45%, #f55702 100%);
+  box-shadow: 0 0 10px 2px rgba(245, 110, 2, 0.65);
+}
+
+.poin-kbd {
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--on-dark);
+  border-radius: 7px;
+  padding: 2px 7px;
+}
+
+.poin-heat { background: var(--heat); }
+
+/* 밝은 유리(채팅 쪽 미션 카드, 상단 컨트롤) */
+.chat-glass {
+  background: var(--glass-light);
+  backdrop-filter: blur(18px) saturate(1.4);
+  border: 1px solid var(--c-line);
+}
+
+@keyframes poin-pop {
+  from { opacity: 0; transform: scale(0.92) translate(-6px, -6px); }
+  to { opacity: 1; transform: scale(1) translate(0, 0); }
+}
+.poin-pop { animation: poin-pop 0.32s var(--spring) both; transform-origin: top left; }
