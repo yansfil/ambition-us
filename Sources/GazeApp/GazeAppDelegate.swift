@@ -1,3 +1,4 @@
+import AXControl
 import AgentContracts
 import AppCore
 import AppKit
@@ -27,10 +28,16 @@ final class GazeAppDelegate: NSObject, NSApplicationDelegate {
         let agent = AgentAssembly.live(gazeMode: options.gazeMode, overlay: overlay)
         self.agent = agent
         agent.coordinator.onModeChange = { [weak self] _ in self?.refreshMenu() }
-        agent.coordinator.onLog = { message in NSLog("[Gaze] %@", message) }
+        agent.coordinator.onLog = { message in DiagnosticsLog.write(message) }
+        DiagnosticsLog.write("시작: 시선 입력 \(options.gazeMode), 권한 \(AppPermission.allCases.map { "\($0)=\(PermissionsModel.state(of: $0))" }.joined(separator: " "))")
         statusMenu = StatusMenuController(delegate: self)
         overlay.render(OverlayState())
         refreshMenu()
+
+        // 화면 기록은 앱이 한 번 요청해야 시스템 설정 목록에 나타난다.
+        if PermissionsModel.state(of: .screenRecording) != .granted {
+            Task { await PermissionStatus.registerScreenCaptureRequest() }
+        }
 
         if PermissionsModel.requiredGranted(gazeMode: options.gazeMode) {
             startAgent()

@@ -29,6 +29,18 @@ if [[ -z "${CODESIGN_IDENTITY:-}" ]]; then
     [[ -n "$CODESIGN_IDENTITY" ]] || CODESIGN_IDENTITY="-"
 fi
 
+# 로컬 개발: Finder/open으로 띄워도 저장소 .env의 키를 읽도록 경로만 넘긴다(키 값은 번들에 넣지 않는다).
+LS_ENVIRONMENT=""
+ENV_FILE="${GAZE_ENV_FILE:-$ROOT/.env}"
+if [[ -f "$ENV_FILE" && "${GAZE_EMBED_ENV_PATH:-1}" == "1" ]]; then
+    LS_ENVIRONMENT="    <key>LSEnvironment</key>
+    <dict>
+        <key>GAZE_ENV_FILE</key>
+        <string>${ENV_FILE}</string>
+    </dict>
+"
+fi
+
 cd "$ROOT"
 echo "==> swift build -c release --product GazeApp"
 swift build -c release --product GazeApp
@@ -78,7 +90,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <true/>
     <key>NSSupportsAutomaticTermination</key>
     <false/>
-    <key>NSCameraUsageDescription</key>
+${LS_ENVIRONMENT}    <key>NSCameraUsageDescription</key>
     <string>Gaze는 웹캠으로 사용자가 화면의 어디를 보고 있는지 추적합니다. 영상은 기기 안에서만 처리하며 저장하거나 전송하지 않습니다.</string>
     <key>NSMicrophoneUsageDescription</key>
     <string>Gaze는 "이거 저기로 옮겨줘" 같은 한국어 음성 명령과 받아쓰기를 듣기 위해 마이크를 사용합니다.</string>

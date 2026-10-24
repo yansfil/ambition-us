@@ -159,8 +159,11 @@ final class PermissionsModel {
             PermissionStatus.requestAccessibility()
             openSettings(permission)
         case .screenRecording:
-            PermissionStatus.requestScreenCapture()
-            openSettings(permission)
+            Task {
+                await PermissionStatus.registerScreenCaptureRequest()
+                refresh()
+                if states[permission] != .granted { openSettings(permission) }
+            }
         }
     }
 

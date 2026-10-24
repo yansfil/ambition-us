@@ -2,6 +2,7 @@ import AppKit
 import ApplicationServices
 import CoreGraphics
 import Foundation
+import ScreenCaptureKit
 
 /// AXControl이 쓰는 macOS 권한.
 public enum PermissionKind: String, Sendable, Codable, CaseIterable {
@@ -57,6 +58,13 @@ public struct PermissionStatus: Sendable, Equatable, Codable {
     /// CGRequestScreenCaptureAccess. 처음 한 번만 시스템 안내를 띄우고, 허용 후에는 앱을 다시 시작해야 반영된다.
     @discardableResult
     public static func requestScreenCapture() -> Bool { CGRequestScreenCaptureAccess() }
+
+    /// 화면 기록 요청을 시스템 설정 목록에 확실히 등록한다.
+    /// CGRequestScreenCaptureAccess만으로는 목록에 앱이 나타나지 않는 경우가 있어 ScreenCaptureKit 조회로 TCC 요청을 만든다.
+    public static func registerScreenCaptureRequest() async {
+        _ = CGRequestScreenCaptureAccess()
+        _ = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+    }
 
     public static func canPostEvents() -> Bool { CGPreflightPostEventAccess() }
 

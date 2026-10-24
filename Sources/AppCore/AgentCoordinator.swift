@@ -250,11 +250,17 @@ public final class AgentCoordinator {
 
     private func startSources() async {
         sourceErrors = []
-        do { try await services.gaze.start() } catch {
+        do {
+            try await services.gaze.start()
+            onLog?("시선 소스 시작됨")
+        } catch {
             sourceErrors.append("시선: \(error)")
             onLog?("시선 소스 시작 실패: \(error)")
         }
-        do { try await services.speech.start() } catch {
+        do {
+            try await services.speech.start()
+            onLog?("음성 소스 시작됨")
+        } catch {
             sourceErrors.append("음성: \(error)")
             onLog?("음성 소스 시작 실패: \(error)")
         }
@@ -268,6 +274,8 @@ public final class AgentCoordinator {
     // MARK: 전사 → 판단
 
     private func handleTranscript(_ update: TranscriptUpdate) {
+        let words = update.words.map(\.word).joined(separator: "|")
+        onLog?("전사 r\(update.revision)\(update.isFinal ? " final" : "") \"\(update.text)\" stable=\"\(update.stablePrefix)\" words=[\(words)]")
         guard mode == .running else { return }
         let id = update.utteranceID
         let previous = evaluations[id]?.task
@@ -283,6 +291,11 @@ public final class AgentCoordinator {
                 return
             }
             let context = await s.fusion.context(for: update)
+            if update.isFinal {
+                let bindings = context.bindings.map { "\($0.word.word)→\($0.target.map { "\($0.role) \($0.title ?? "")" } ?? "없음")(\($0.role))" }
+                let gazed = context.gazedTarget.map { "\($0.role) \($0.title ?? "")" } ?? "없음"
+                self?.onLog?("결합 r\(update.revision): 응시 대상=\(gazed) 지시어=\(bindings)")
+            }
             guard !Task.isCancelled else {
                 self?.finishEvaluation(id, token: token)
                 return
@@ -305,6 +318,11 @@ public final class AgentCoordinator {
     }
 
     private func handle(_ result: IntentResult, utterance: TranscriptUpdate) {
+        switch result {
+        case .none: if utterance.isFinal { onLog?("판단 r\(utterance.revision): 없음") }
+        case .suggestion(let suggestion): onLog?("판단 r\(utterance.revision): 제안 \"\(suggestion.message)\"")
+        case .proposal(let proposal): onLog?("판단 r\(utterance.revision): 실행 제안 \(proposal.origin) \(proposal.action) 위험도 \(proposal.risk)")
+        }
         guard mode == .running else { return }
         switch result {
         case .none:
@@ -332,6 +350,7 @@ public final class AgentCoordinator {
     }
 
     private func handleOutcome(_ outcome: ActionOutcome) {
+        onLog?("실행 결과 \(outcome.status) 검증=\(outcome.verification) \(outcome.reason ?? "")")
         onOutcome?(outcome)
         let proposal = tracked[outcome.proposalID]
         let frame = proposal.map { Self.regionFrame(for: $0.action) } ?? outcome.target?.frame
