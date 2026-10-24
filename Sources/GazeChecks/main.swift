@@ -9,6 +9,7 @@ await overlayChecks()
 await fusionChecks()
 await intelligenceChecks()
 await controlChecks()
+await appCoreChecks()
 
 print(failures == 0 ? "ALL CHECKS PASSED" : "\(failures) CHECK(S) FAILED")
 exit(failures == 0 ? 0 : 1)
