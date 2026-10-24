@@ -48,7 +48,7 @@ export interface PoinState {
 }
 
 const defaultSettings: PoinSettings = {
-  threshold: 0.6,
+  threshold: 0.4,
   dwellMs: 1500,
   pauseMs: 4000,
   cooldownMs: 45_000,

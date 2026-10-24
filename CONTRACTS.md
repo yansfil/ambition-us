@@ -42,9 +42,9 @@ UI 한글은 컴포넌트에 직접 쓰지 않는다. 모듈별 파일에만 추
 
 1. **신호**: B가 문서 전역 이벤트로 수집해 `poin().pushSignal()`. 단, 메시지 전송은 A가 `pushSignal({kind:'verbal', type:'message_sent', data:{text}})`로 알린다. D는 `nod`/`shake`/`brow`/`gaze`를 push하고 `live.sense`를 갱신한다.
 2. **순간**: B의 momentDetector(룰)가 후보를 만들고 Trace(`status:'inferring'`)를 추가한다. 쿨다운·세션 한도·칩 중복·일시정지면 `skipped`로 남긴다(로그 포함).
-3. **추론**: B가 `POST /api/poin/infer`(InferRequest → InferResult). 확신도 < `settings.threshold`면 `skipped`, `skipReason:"확신도 0.41 < 0.60"`.
-4. **칩**: B가 `setActiveChip`. 칩은 표시 순간의 커서 오른쪽 아래(+16, +20)에 고정. 화면 끝이면 위/왼쪽으로 뒤집기. 오브(Companion)는 칩과 별개로 늘 커서를 따라다닌다(칩이 떠 있으면 오브는 칩 머리로 흡수된 것처럼 숨김).
-5. **반응**: `⌥1`(e.code Digit1 + altKey), `⌥2`, 클릭, `Esc`, D의 `nod`(=accept1)·`shake`(=decline), 8초 무응답(`timeout`). `e.isComposing`이면 무시, 처리 시 `preventDefault`. 입력창 포커스 중에도 동작.
+3. **추론**: B가 `POST /api/poin/infer`(InferRequest → InferResult). 확신도 < `settings.threshold`면 `skipped`, `skipReason:"확신도 0.41 < 0.60"`. 룰 진행도 0.6 이상이면 같은 종류로 미리 호출(prefetch)해 두고, 확정 시 8초 이내 결과면 재사용한다(종류별 동시 1개, 분당 3회, 실패 시 평소 경로).
+4. **칩**: B가 `setActiveChip`. 칩도 오브처럼 커서 오른쪽 아래(+16, +20)를 계속 따라다닌다. 화면 끝이면 위/왼쪽으로 뒤집기. 칩이 떠 있는 동안 오브는 칩 머리로 흡수된 것처럼 숨김. 칩은 `pointer-events:none`(클릭 반응 없음).
+5. **반응**: 단축키와 제스처만. `⌥1`(e.code Digit1 + altKey), `⌥2`, `Esc`, D의 `nod`(=accept1)·`shake`(=decline), 8초 무응답(`timeout`). `e.isComposing`이면 무시, 처리 시 `preventDefault`. 입력창 포커스 중에도 동작.
 6. **결과**: B가 Effect를 적용한다.
    - `fill_draft` → `requestDraftFill(text, traceId)` → A가 입력창에 채우고 포커스, `consumeDraftFill()`
    - `agent_turn` → `requestTurn(directive, markText, traceId)` → A가 즉시 poin 턴을 보낸다: `sendMessage({ text: directive, metadata: { poin: { markText, traceId } } })`. 이 메시지는 사용자 말풍선이 아니라 poin 표식(`.poin-glass` 알약, 시안 05)으로 그린다. 응답이 끝나면 A가 `updateTrace(traceId, { outcome: { ...기존, turnSummary } })`.
