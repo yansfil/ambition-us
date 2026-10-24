@@ -1,4 +1,5 @@
 import AgentContracts
+import AppKit
 import ApplicationServices
 import CoreGraphics
 import Foundation
@@ -152,40 +153,71 @@ public final class AXActionExecutor: ActionExecuting {
         let before = element.string(AXAttr.value)
         element.set(AXAttr.focused, kCFBooleanTrue)
 
-        // 1) 커서 위치에 삽입: AXSelectedText 설정.
-        if element.isSettable(AXAttr.selectedText), element.set(AXAttr.selectedText, text as CFString) == .success {
-            return insertionResult(element, before: before, text: text, target: target, synthetic: false)
-        }
-
-        // 2) 값 끝에 덧붙이기: AXValue 설정. 커서가 중간에 있었다면 위치가 다를 수 있다.
-        if element.isSettable(AXAttr.value), let before {
-            let expected = before + text
-            if element.set(AXAttr.value, expected as CFString) == .success {
-                if let after = poll({ element.string(AXAttr.value) }, until: { $0 == expected }) ?? element.string(AXAttr.value) {
-                    return after == expected
-                        ? .success(.verified, target)
-                        : .success(.unverifiedAccessibility, target, note: "value was set but read back differently")
+        // 웹·Electron 입력칸(터미널, 채팅창 등)은 AX로 값을 바꿔도 입력 이벤트가 나지 않아 앱 상태에 반영되지 않는다.
+        // 이런 곳은 처음부터 실제 키 입력으로 넣는다.
+        if !element.isInsideWebArea() {
+            // 1) 커서 위치에 삽입: AXSelectedText 설정.
+            if element.isSettable(AXAttr.selectedText), element.set(AXAttr.selectedText, text as CFString) == .success {
+                let result = insertionResult(element, before: before, text: text, target: target, synthetic: false)
+                // 값이 전혀 바뀌지 않았으면 앱이 무시한 것이므로 키 입력으로 다시 넣어도 중복되지 않는다.
+                if result.verification == .verified || element.string(AXAttr.value) != before || !options.allowSyntheticFallback {
+                    return result
                 }
-                return .success(.unverifiedAccessibility, target, note: "value was set but could not be read back")
+            } else if element.isSettable(AXAttr.value), let before {
+                // 2) 값 끝에 덧붙이기: AXValue 설정. 커서가 중간에 있었다면 위치가 다를 수 있다.
+                let expected = before + text
+                if element.set(AXAttr.value, expected as CFString) == .success {
+                    if let after = poll({ element.string(AXAttr.value) }, until: { $0 == expected }) ?? element.string(AXAttr.value) {
+                        if after == expected { return .success(.verified, target) }
+                        if after != before || !options.allowSyntheticFallback {
+                            return .success(.unverifiedAccessibility, target, note: "value was set but read back differently")
+                        }
+                    } else {
+                        return .success(.unverifiedAccessibility, target, note: "value was set but could not be read back")
+                    }
+                }
             }
         }
 
-        // 3) 합성 유니코드 타이핑. 포커스가 대상에 있음을 확인한 뒤에만 보낸다.
+        // 3) 실제 키 입력. 대상에 포커스가 있음을 확인(없으면 클릭해서 맞춤)한 뒤에만 보낸다.
         guard options.allowSyntheticFallback else {
             throw AXControlError(.valueNotSettable, "element accepts neither AXSelectedText nor AXValue")
         }
         if InputSynthesizer.isSecureEventInputEnabled() {
             throw AXControlError(.secureInputActive, "secure event input is on; synthetic typing would be dropped")
         }
+        try focusForTyping(element, live, pid: target.pid)
         let app = AXElementRef.application(target.pid)
-        guard let focused = app.element(AXAttr.focusedUIElement), focused.isSelfOrDescendant(of: element) else {
-            throw AXControlError(.windowNotFocused, "target is not the focused text receiver; focus it first")
-        }
-        if AXSemantics.isSecure(role: focused.string(AXAttr.role) ?? "", subrole: focused.string(AXAttr.subrole)) {
+        if let focused = app.element(AXAttr.focusedUIElement),
+           AXSemantics.isSecure(role: focused.string(AXAttr.role) ?? "", subrole: focused.string(AXAttr.subrole)) {
             throw AXControlError(.secureFieldRejected, "focused element is a secure field")
         }
-        input.type(text, pid: target.pid)
+        input.type(text, pid: Self.isFrontmost(target.pid) ? nil : target.pid)
         return insertionResult(element, before: before, text: text, target: target, synthetic: true)
+    }
+
+    /// 키 입력 전에 대상 앱을 앞으로 가져오고 대상(또는 그 자손)에 포커스를 맞춘다. 안 되면 대상 중심을 클릭한다.
+    private func focusForTyping(_ element: AXElementRef, _ live: LiveElementState, pid: pid_t) throws {
+        if !Self.isFrontmost(pid) {
+            NSRunningApplication(processIdentifier: pid)?.activate()
+            _ = poll({ Self.isFrontmost(pid) }, until: { $0 })
+        }
+        func hasFocus() -> Bool {
+            guard let focused = AXElementRef.application(pid).element(AXAttr.focusedUIElement) else { return false }
+            return focused.isSelfOrDescendant(of: element) || element.isSelfOrDescendant(of: focused)
+        }
+        if hasFocus() { return }
+        element.set(AXAttr.focused, kCFBooleanTrue)
+        if poll(hasFocus, until: { $0 }) { return }
+        let point = try clickablePoint(element, live)
+        input.click(at: point)
+        guard poll(hasFocus, until: { $0 }) else {
+            throw AXControlError(.windowNotFocused, "could not focus the target text field")
+        }
+    }
+
+    static func isFrontmost(_ pid: pid_t) -> Bool {
+        NSWorkspace.shared.frontmostApplication?.processIdentifier == pid
     }
 
     private func insertionResult(_ element: AXElementRef, before: String?, text: String, target: UITarget,
@@ -235,7 +267,9 @@ public final class AXActionExecutor: ActionExecuting {
         let toggles = AXSemantics.toggleRoles.contains(live.role)
         let before = toggles ? element.string(AXAttr.value) : nil
 
-        if element.actionNames().contains(AXSemantics.pressAction) {
+        // 입력칸·묶음·글자 같은 요소의 AXPress는 앱이 무시하는 경우가 많다. 컨트롤 역할일 때만 AXPress를 쓴다.
+        let prefersAXPress = AXSemantics.interactiveRoles.contains(live.role)
+        if prefersAXPress, element.actionNames().contains(AXSemantics.pressAction) {
             let error = element.perform(AXSemantics.pressAction)
             switch error {
             case .success:
@@ -278,7 +312,7 @@ public final class AXActionExecutor: ActionExecuting {
             throw AXControlError(.elementNotClickable, "element has no on-screen frame")
         }
         let center = frame.axCenter
-        guard let hit = store.hitTest(center), hit.isSelfOrDescendant(of: element) else {
+        guard let hit = store.hitTest(center), hit.isSelfOrDescendant(of: element) || element.isSelfOrDescendant(of: hit) else {
             throw AXControlError(.elementOccluded, "another element covers the target at its center")
         }
         return center

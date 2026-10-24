@@ -5,6 +5,7 @@ import Foundation
 
 func axChecks() async {
     await suite("AXControl") {
+        unicodePieceChecks()
         coordinateChecks()
         scalingChecks()
         tokenRegistryChecks()
@@ -349,4 +350,13 @@ private func miscChecks() {
     let clock = AXUptimeClock()
     let t1 = clock.now(), t2 = clock.now()
     check(t2 >= t1, "단조 시계")
+}
+
+
+private func unicodePieceChecks() {
+    let text = "안녕하세요 반갑습니다. 오늘 회의는 세 시에 시작합니다 👍🏽 확인 부탁드려요"
+    let pieces = InputSynthesizer.unicodePieces(text)
+    check(pieces.joined() == text, "유니코드 조각을 이으면 원문")
+    check(pieces.allSatisfy { $0.utf16.count <= 16 }, "조각마다 UTF-16 16 이하")
+    check(pieces.contains { $0.contains("👍🏽") }, "이모지(합자)는 쪼개지지 않음")
 }

@@ -99,16 +99,38 @@ public struct InputSynthesizer: Sendable {
             case .key(let combo):
                 press(combo, pid: pid)
             case .text(let chunk):
-                let units = Array(chunk.utf16)
-                for keyDown in [true, false] {
-                    guard let event = CGEvent(keyboardEventSource: source(), virtualKey: 0, keyDown: keyDown) else { continue }
-                    units.withUnsafeBufferPointer { buffer in
-                        event.keyboardSetUnicodeString(stringLength: buffer.count, unicodeString: buffer.baseAddress)
+                // CGEvent 하나에 실리는 유니코드 길이는 짧다(약 20 UTF-16). 글자 단위로 잘라 보낸다.
+                for piece in Self.unicodePieces(chunk) {
+                    let units = Array(piece.utf16)
+                    for keyDown in [true, false] {
+                        guard let event = CGEvent(keyboardEventSource: source(), virtualKey: 0, keyDown: keyDown) else { continue }
+                        units.withUnsafeBufferPointer { buffer in
+                            event.keyboardSetUnicodeString(stringLength: buffer.count, unicodeString: buffer.baseAddress)
+                        }
+                        send(event, pid: pid)
                     }
-                    send(event, pid: pid)
                 }
             }
         }
+    }
+
+    /// 글자(grapheme)를 깨지 않고 UTF-16 기준 `limit` 이하 조각으로 나눈다.
+    public static func unicodePieces(_ text: String, limit: Int = 16) -> [String] {
+        var pieces: [String] = []
+        var current = ""
+        var count = 0
+        for character in text {
+            let length = character.utf16.count
+            if count + length > limit, !current.isEmpty {
+                pieces.append(current)
+                current = ""
+                count = 0
+            }
+            current.append(character)
+            count += length
+        }
+        if !current.isEmpty { pieces.append(current) }
+        return pieces
     }
 
     /// 키 조합을 한 번 누른다. 수식 키를 먼저 누르고 마지막에 뗀다.

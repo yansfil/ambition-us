@@ -42,6 +42,8 @@ public actor ActionCoordinator {
     private let executor: any ActionExecuting
     private let clock: any MonotonicClock
     private let approvalTimeout: Duration
+    /// 승인된 제안을 실행기에 넘길 때 주는 유효 시간(나노초).
+    static let approvedExecutionWindow: UInt64 = 5_000_000_000
     private let executionTimeout: Duration
 
     private enum Resolution: Sendable {
@@ -189,7 +191,8 @@ public actor ActionCoordinator {
         return results
     }
 
-    private func process(_ proposal: ActionProposal, epoch: Int) async -> Step {
+    private func process(_ original: ActionProposal, epoch: Int) async -> Step {
+        var proposal = original
         if let reason = haltReason(since: epoch) {
             return notExecuted(proposal, reason: reason, skip: "Not executed: \(reason)")
         }
@@ -233,7 +236,13 @@ public actor ActionCoordinator {
             if let reason = haltReason(since: epoch) {
                 return notExecuted(proposal, reason: reason, skip: "Not executed: \(reason)")
             }
-            // 승인 뒤에는 만료를 다시 보지 않는다. 대상이 바뀌었는지는 실행기가 실행 직전에 다시 확인한다.
+            // 승인 뒤에는 만료를 다시 보지 않는다. 실행기의 만료 검사도 통과하도록 승인 시점부터 다시 센다.
+            // 대상이 바뀌었는지는 실행기가 실행 직전에 다시 확인한다.
+            let renewed = clock.now().nanoseconds &+ Self.approvedExecutionWindow
+            proposal = ActionProposal(id: proposal.id, action: proposal.action, basedOnUtterance: proposal.basedOnUtterance,
+                                      basedOnRevision: proposal.basedOnRevision, rationale: proposal.rationale,
+                                      risk: proposal.risk, expiresAt: MonotonicTime(nanoseconds: renewed),
+                                      origin: proposal.origin)
         }
 
         emit(proposal, .started, reason: nil)

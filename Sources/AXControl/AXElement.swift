@@ -120,6 +120,18 @@ extension AXElementRef {
     }
 
     /// 자기 자신 또는 조상(최대 depth 단계)이 target인지.
+    /// 웹 콘텐츠(Chromium·Electron·Safari) 안의 요소인지. 이런 요소는 AX 값 쓰기가 앱 상태에 반영되지 않는 경우가 많다.
+    func isInsideWebArea(maxDepth: Int = 40) -> Bool {
+        var current: AXElementRef? = self
+        var depth = 0
+        while let node = current, depth <= maxDepth {
+            if node.string(AXAttr.role) == "AXWebArea" { return true }
+            current = node.element(AXAttr.parent)
+            depth += 1
+        }
+        return false
+    }
+
     func isSelfOrDescendant(of target: AXElementRef, maxDepth: Int = 12) -> Bool {
         var current: AXElementRef? = self
         var depth = 0
