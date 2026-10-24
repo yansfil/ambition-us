@@ -46,6 +46,10 @@ const steps = [
     name: '열기',
     code: `
 for (let i = 0; i < 60 && !(await page.evaluate(() => !!window.__poinTest)); i++) await sleep(250);
+// 동의 모달 통과(테스트 탭에만 저장) 후 다시 불러와 poin이 켜진 상태로 시작
+await page.evaluate(() => localStorage.setItem('poin-consent-v1', 'yes'));
+await page.reload();
+for (let i = 0; i < 60 && !(await page.evaluate(() => !!window.__poinTest)); i++) await sleep(250);
 const vp0 = await getVp();
 await page.mouse.move(vp0.width / 2, vp0.height / 2, { steps: 5 });
 const s0 = await snap();

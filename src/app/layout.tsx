@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<'/'>) {
   return (
-    <html lang="ko" className="h-full antialiased">
+    <html lang="ko" className="h-full antialiased" suppressHydrationWarning>
       <body
         className="min-h-full bg-white text-[var(--c-text)]"
         style={{ fontFamily: '-apple-system, "SF Pro Text", "Apple SD Gothic Neo", system-ui, sans-serif' }}

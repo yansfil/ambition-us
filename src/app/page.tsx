@@ -12,6 +12,7 @@ import SenseRunner from '@/poin/sense/SenseRunner';
 import SenseToggle from '@/poin/sense/SenseToggle';
 import CameraBadge from '@/poin/sense/CameraBadge';
 import ConsentModal from '@/components/ConsentModal';
+import SenseCoach from '@/components/SenseCoach';
 import { installClientLogging, log } from '@/lib/log';
 import { usePoin } from '@/poin/store';
 
@@ -41,6 +42,7 @@ export default function Home() {
       <Chip />
       <Companion />
       <Retro />
+      <SenseCoach />
       <ConsentModal />
     </main>
   );

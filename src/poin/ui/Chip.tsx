@@ -77,6 +77,11 @@ function ChipView({ chip }: { chip: ActiveChip }) {
             </span>
           )}
         </div>
+        {!senseOn && (
+          <div className="text-[11px]" style={{ marginTop: -4, paddingBottom: 10, color: 'var(--on-dark-muted)' }}>
+            {t.poin.senseOffHint}
+          </div>
+        )}
         <div style={{ height: 2, margin: '0 -15px', background: 'rgba(255,255,255,.08)' }}>
           <i
             className="poin-heat block h-full origin-left rounded-[2px]"

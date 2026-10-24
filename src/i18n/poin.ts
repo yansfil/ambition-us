@@ -2,7 +2,8 @@
 export const poin = {
   brand: 'poin',
   kbd: { accept1: '⌥1', accept2: '⌥2', decline: 'Esc' },
-  senseHint: '끄덕 ↕ · 젓기 ↔',
+  senseHint: '끄덕이면 수락 · 저으면 거절',
+  senseOffHint: '안면 인식을 켜면 고개로도 답할 수 있어요',
   declineLabel: {
     ambiguous_request: '괜찮아요',
     comparison_hesitation: '괜찮아요',

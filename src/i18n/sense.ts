@@ -6,6 +6,7 @@ export const sense = {
   deniedHow: '주소창의 카메라 아이콘에서 허용한 뒤 다시 켜 주세요',
   errorHint: '카메라를 켜지 못했어요',
   errorHow: '잠시 뒤 다시 켜 보세요',
+  coachReady: '준비됐어요. 제안이 뜨면 끄덕이면 수락, 고개를 저으면 거절돼요',
   badgeOn: '카메라 사용 중',
   badgeStarting: '카메라 준비 중',
   badgeNote: '영상은 이 기기 밖으로 나가지 않아요',
