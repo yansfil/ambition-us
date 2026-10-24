@@ -337,12 +337,15 @@ private func cueChecks() {
     if let cue = dwell.first {
         check(secs(cue.time) >= 1.2 && secs(cue.time) < 1.5, "dwell 시점이 임계 직후 (\(String(format: "%.2f", secs(cue.time)))s)")
         check(cue.targetID == "gaze-region-1@1" && abs(cue.confidence - 0.9) < 1e-9, "dwell 대상 키와 신뢰도")
+        check(cue.displayID == 1 && (cue.point.map { hypot($0.x - a.x, $0.y - a.y) < 10 } ?? false),
+              "dwell 단서에 응시 중심점·디스플레이(Fusion이 UI 요소로 해석)")
     }
     check(runScript([(a, 1.0)]).isEmpty, "짧은 응시는 단서 없음")
 
     let revisit = runScript([(a, 0.5), (b, 0.5), (a, 0.5)])
     check(revisit.count == 1 && revisit.first?.kind == .revisit, "A→B→A → revisit 1회")
     check(revisit.first?.targetID == "gaze-region-1@1", "revisit 대상은 처음 본 영역 A")
+    check(revisit.first?.point.map { hypot($0.x - a.x, $0.y - a.y) < 10 } ?? false, "revisit 단서 위치 = 돌아온 응시점")
 
     let twice = runScript([(a, 0.5), (b, 0.5), (a, 0.5), (c, 0.5), (a, 0.5)]).filter { $0.kind == .revisit }
     check(twice.count == 2 && twice[1].confidence > twice[0].confidence, "반복 재방문은 신뢰도 증가")

@@ -13,7 +13,21 @@ func axChecks() async {
         treeChecks()
         keyChecks()
         miscChecks()
+        captureExclusionChecks()
     }
+}
+
+/// 화면 캡처에서 Gaze 자신의 오버레이 창을 빼는 규칙(실제 캡처는 하지 않는다).
+private func captureExclusionChecks() {
+    let own: Int32 = 100
+    check(ScreenCapture.shouldExclude(windowNumber: 7, ownerPID: 999, ownPID: own, excludeOwnProcess: false, registry: [7]),
+          "오버레이 레지스트리에 있는 창은 항상 제외")
+    check(ScreenCapture.shouldExclude(windowNumber: 8, ownerPID: own, ownPID: own, excludeOwnProcess: true, registry: []),
+          "자기 프로세스 창은 기본 제외")
+    check(!ScreenCapture.shouldExclude(windowNumber: 8, ownerPID: 999, ownPID: own, excludeOwnProcess: true, registry: [7]),
+          "다른 앱 창은 캡처")
+    let registryCapture = ScreenCapture(excludedWindowNumbers: { [42, 43] })
+    check(registryCapture.excludedWindowNumbers?() == [42, 43], "캡처가 레지스트리 스냅샷을 읽음")
 }
 
 private func near(_ a: CGFloat, _ b: CGFloat, _ eps: CGFloat = 1e-6) -> Bool { abs(a - b) <= eps }

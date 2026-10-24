@@ -57,5 +57,7 @@ public struct FusionStats: Sendable, Equatable {
     public var targetCacheHits = 0
     public var analysesComputed = 0
     public var analysisCacheHits = 0
+    /// 위치가 있는 비언어 단서를 UI 요소 token으로 바꾼 횟수.
+    public var resolvedCueTargets = 0
     public init() {}
 }

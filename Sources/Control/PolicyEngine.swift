@@ -41,9 +41,19 @@ public struct GazeFocus: Sendable, Equatable {
 public struct PolicyContext: Sendable, Equatable {
     public var safetyMode: AgentSafetySwitch.Mode
     public var gazeFocus: GazeFocus?
-    public init(safetyMode: AgentSafetySwitch.Mode = .active, gazeFocus: GazeFocus? = nil) {
-        self.safetyMode = safetyMode; self.gazeFocus = gazeFocus
+    /// 이 제안이 받아쓰기 원장이 발급해 아직 대기 중인 편집과 정확히 일치하는지.
+    /// `origin == .dictationLedger`인 제안만 의미가 있다.
+    public var verifiedDictationEdit: Bool
+    public init(safetyMode: AgentSafetySwitch.Mode = .active, gazeFocus: GazeFocus? = nil,
+                verifiedDictationEdit: Bool = false) {
+        self.safetyMode = safetyMode; self.gazeFocus = gazeFocus; self.verifiedDictationEdit = verifiedDictationEdit
     }
+}
+
+/// 받아쓰기 원장이 발급한 편집인지 확인한다. `DictationLedger`가 구현한다.
+public protocol DictationEditVerifying: Sendable {
+    /// 제안 ID·대상·행동이 원장이 계획하고 아직 커밋·포기하지 않은 편집과 같으면 true.
+    func isPendingLedgerEdit(_ proposal: ActionProposal) async -> Bool
 }
 
 /// 결정적 정책 규칙. 같은 입력이면 항상 같은 결정을 낸다.
@@ -51,13 +61,16 @@ public struct PolicyContext: Sendable, Equatable {
 /// 평가 순서(먼저 걸리는 규칙이 이긴다):
 /// 1. 비상 정지·일시정지 → reject
 /// 2. 만료된 제안 → reject
-/// 3. 보안(비밀번호) 필드 → reject
-/// 4. 오래된 대상(staleTargetAge 초과) → reject
-/// 5. 위험도 high → requireApproval
-/// 6. 민감 키워드(보내기·삭제·결제 등) → requireApproval
-/// 7. 줄바꿈·탭 등 제어 문자 입력(채팅창에서 전송될 수 있음) → requireApproval
-/// 8. 행동별 규칙: move는 low이고 두 대상이 신선할 때만, typeText는 low이고
-///    편집 가능하며 시선이 머문 필드일 때만 execute. 나머지는 모두 requireApproval.
+/// 3. 받아쓰기 의도(origin dictationIntent)는 실행 대상이 아님 → reject.
+///    원장 편집(origin dictationLedger)인데 원장이 발급한 대기 편집과 다르면 → reject
+/// 4. 보안(비밀번호) 필드 → reject
+/// 5. 오래된 대상(staleTargetAge 초과) → reject
+/// 6. 위험도 high → requireApproval
+/// 7. 민감 키워드(보내기·삭제·결제 등) → requireApproval
+/// 8. 줄바꿈·탭 등 제어 문자 입력(채팅창에서 전송될 수 있음) → requireApproval
+/// 9. 행동별 규칙: move는 low이고 두 대상이 신선할 때만, typeText는 low이고
+///    편집 가능하며 시선이 머문 필드일 때만 execute. setValue는 원장이 확인한 교정
+///    (에이전트가 넣은 범위 안쪽만 고침)이고 low·편집 가능일 때만 execute. 나머지는 모두 requireApproval.
 public enum PolicyRules {
     public static func evaluate(_ proposal: ActionProposal, now: MonotonicTime,
                                 context: PolicyContext, configuration: PolicyConfiguration) -> PolicyDecision {
@@ -66,6 +79,16 @@ public enum PolicyRules {
         }
         if now >= proposal.expiresAt {
             return .reject(reason: "Proposal expired")
+        }
+        switch proposal.origin {
+        case .intent:
+            break
+        case .dictationIntent:
+            return .reject(reason: "Dictation intents are applied through the dictation ledger")
+        case .dictationLedger:
+            guard context.verifiedDictationEdit else {
+                return .reject(reason: "Dictation edit was not issued by the dictation ledger")
+            }
         }
 
         let targets = proposal.action.involvedTargets
@@ -115,7 +138,11 @@ public enum PolicyRules {
         case .press:
             return .requireApproval(reason: "Pressing a control requires confirmation")
 
-        case .setValue:
+        case .setValue(let target, _):
+            // 원장 교정은 에이전트가 이 발화로 넣은 범위 안쪽만 바꾼다(원장이 범위를 보장하고, 위에서 발급 여부를 확인했다).
+            if proposal.origin == .dictationLedger, proposal.risk == .low, target.isEditable {
+                return .execute
+            }
             return .requireApproval(reason: "Replacing a field value requires confirmation")
         }
     }
@@ -173,12 +200,16 @@ public enum PolicyRules {
 public actor PolicyEngine: ActionAuthorizing {
     public nonisolated let configuration: PolicyConfiguration
     public nonisolated let safety: AgentSafetySwitch
+    private let dictationVerifier: (any DictationEditVerifying)?
     private var gazeFocus: GazeFocus?
 
+    /// - Parameter dictationVerifier: 받아쓰기 원장. 없으면 원장 편집 제안은 모두 거부된다.
     public init(configuration: PolicyConfiguration = PolicyConfiguration(),
-                safety: AgentSafetySwitch = AgentSafetySwitch()) {
+                safety: AgentSafetySwitch = AgentSafetySwitch(),
+                dictationVerifier: (any DictationEditVerifying)? = nil) {
         self.configuration = configuration
         self.safety = safety
+        self.dictationVerifier = dictationVerifier
     }
 
     /// 결합 모듈이 시선이 머문 대상을 알려준다. nil이면 초점을 지운다.
@@ -191,6 +222,12 @@ public actor PolicyEngine: ActionAuthorizing {
     }
 
     public func decide(_ proposal: ActionProposal, now: MonotonicTime) async -> PolicyDecision {
-        PolicyRules.evaluate(proposal, now: now, context: currentContext(), configuration: configuration)
+        var verified = false
+        if proposal.origin == .dictationLedger, let dictationVerifier {
+            verified = await dictationVerifier.isPendingLedgerEdit(proposal)
+        }
+        var context = currentContext()
+        context.verifiedDictationEdit = verified
+        return PolicyRules.evaluate(proposal, now: now, context: context, configuration: configuration)
     }
 }

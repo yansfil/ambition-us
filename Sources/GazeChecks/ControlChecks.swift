@@ -8,6 +8,8 @@ func controlChecks() async {
     await suite("Control/PolicyEngine") { await policyEngineChecks() }
     await suite("Control/DictationLedger") { await ledgerChecks() }
     await suite("Control/ActionCoordinator") { await coordinatorChecks() }
+    await suite("Control/통합: 경로별 정책·원장 확인") { await originPolicyChecks() }
+    await suite("Control/통합: 정책 거부 상태·실행 시간 초과·정지") { await coordinatorIntegrationChecks() }
 }
 
 // MARK: - 공용 도우미
@@ -426,12 +428,13 @@ private struct Harness {
     let coordinator: ActionCoordinator
     let field: UITarget
 
-    init(failing: Set<UUID> = [], approvalTimeout: Duration = .seconds(5)) async {
+    init(failing: Set<UUID> = [], approvalTimeout: Duration = .seconds(5),
+         ledger: DictationLedger? = nil) async {
         clock = FakeClock(at(1))
         executor = FakeExecutor(clock: clock, failing: failing)
         field = uiTarget()
         let safety = AgentSafetySwitch()
-        let engine = PolicyEngine(safety: safety)
+        let engine = PolicyEngine(safety: safety, dictationVerifier: ledger)
         await engine.updateGazeFocus(field, at: at(0.5))
         coordinator = ActionCoordinator(policy: engine, executor: executor, clock: clock, safety: safety,
                                         approvalTimeout: approvalTimeout)
@@ -579,8 +582,8 @@ private func coordinatorChecks() async {
 
     // 원장 델타 → 제안 → 코디네이터
     do {
-        let h = await Harness()
         let ledger = DictationLedger()
+        let h = await Harness(ledger: ledger)
         let id = UUID()
         guard let d = delta(await ledger.plan(for: update(id, 1, stable: "안녕"), target: h.field,
                                               snapshot: snap("", caret: 0))) else {
@@ -592,5 +595,141 @@ private func coordinatorChecks() async {
         await expect((await h.coordinator.submit(replay)).reason == "Duplicate proposal ignored",
               "같은 델타를 다시 제출해도 코디네이터가 차단")
         await expect(await h.executor.executed.count == 1, "받아쓰기 중복 입력 없음")
+    }
+}
+
+// MARK: - 통합: 제안 경로(origin)와 원장 확인
+
+private func originPolicyChecks() async {
+    let config = PolicyConfiguration()
+    let field = uiTarget()
+    let gazed = PolicyContext(safetyMode: .active, gazeFocus: GazeFocus(target: field, at: t0))
+    var verified = gazed
+    verified.verifiedDictationEdit = true
+
+    func originProposal(_ action: AgentAction, _ origin: ActionProposal.Origin, risk: RiskLevel = .low) -> ActionProposal {
+        ActionProposal(id: UUID(), action: action, basedOnUtterance: UUID(), basedOnRevision: 1, rationale: "Dictation",
+                       risk: risk, expiresAt: at(30), origin: origin)
+    }
+    func decide(_ p: ActionProposal, _ context: PolicyContext) -> PolicyDecision {
+        PolicyRules.evaluate(p, now: at(1), context: context, configuration: config)
+    }
+
+    let intent = originProposal(.typeText(target: field, text: "안녕하세요"), .dictationIntent)
+    check(decide(intent, verified) == .reject(reason: "Dictation intents are applied through the dictation ledger"),
+          "받아쓰기 의도는 직접 실행하지 않음(원장 경유)")
+    let forged = originProposal(.setValue(target: field, value: "x"), .dictationLedger)
+    check(decide(forged, gazed) == .reject(reason: "Dictation edit was not issued by the dictation ledger"),
+          "원장이 발급하지 않은 원장 편집 → reject")
+    check(decide(forged, verified) == .execute, "원장이 확인한 교정 setValue(low) → execute")
+    check(isApproval(decide(originProposal(.setValue(target: field, value: "x"), .dictationLedger, risk: .medium), verified)),
+          "원장 교정이라도 low가 아니면 승인 요구")
+    check(isApproval(decide(originProposal(.setValue(target: field, value: "결제 완료"), .dictationLedger), verified)),
+          "원장 교정이라도 민감 키워드는 승인 요구")
+    check(isReject(decide(originProposal(.setValue(target: uiTarget("pw", secure: true), value: "x"), .dictationLedger),
+                          verified)), "원장 교정이라도 보안 필드는 reject")
+    check(isApproval(decide(originProposal(.setValue(target: field, value: "x"), .intent), verified)),
+          "일반 setValue는 여전히 승인 요구")
+    var away = verified
+    away.gazeFocus = nil
+    check(decide(originProposal(.setValue(target: field, value: "x"), .dictationLedger), away) == .execute,
+          "에이전트가 넣은 범위 교정은 시선이 떠나도 실행")
+    check(isApproval(decide(originProposal(.typeText(target: field, text: "x"), .dictationLedger), away)),
+          "원장 덧붙임(typeText)은 시선이 머문 필드여야 자동 실행")
+
+    // PolicyEngine + 원장: 대기 중인 편집만 확인된다.
+    let ledger = DictationLedger()
+    let engine = PolicyEngine(safety: AgentSafetySwitch(), dictationVerifier: ledger)
+    let id = UUID()
+    guard let first = delta(await ledger.plan(for: update(id, 1, stable: "세시"), target: field, snapshot: snap("", caret: 0)))
+    else { check(false, "원장 apply"); return }
+    await engine.updateGazeFocus(field, at: at(0.5))
+    let append = first.makeProposal(expiresAt: at(30))
+    check(append.origin == .dictationLedger, "원장 제안의 origin")
+    await expect(await engine.decide(append, now: at(1)) == .execute, "대기 중인 원장 덧붙임 → execute")
+    let tampered = ActionProposal(id: append.id, action: .typeText(target: field, text: "다른 텍스트"),
+                                  basedOnUtterance: id, basedOnRevision: 1, rationale: "Dictation", risk: .low,
+                                  expiresAt: at(30), origin: .dictationLedger)
+    await expect(isReject(await engine.decide(tampered, now: at(1))), "ID가 같아도 내용이 다르면 reject")
+    await ledger.commit(first.idempotencyKey, observed: snap("세시", caret: 2))
+    await expect(isReject(await engine.decide(append, now: at(1))), "커밋된 편집을 다시 내면 reject")
+    guard let fix = delta(await ledger.plan(for: update(id, 2, stable: "세 시", final: true), target: field,
+                                            snapshot: snap("세시", caret: 2))) else { check(false, "교정 apply"); return }
+    let correction = fix.makeProposal(expiresAt: at(30))
+    check(correction.action == .setValue(target: field, value: "세 시"), "교정은 setValue(기대 필드 값)")
+    await engine.updateGazeFocus(nil, at: at(1))
+    await expect(await engine.decide(correction, now: at(1)) == .execute, "대기 중인 원장 교정 → 시선 없이도 execute")
+    await expect(isReject(await PolicyEngine().decide(correction, now: at(1))), "원장 확인기가 없으면 원장 편집 reject")
+}
+
+private actor SlowExecutor: ActionExecuting {
+    private(set) var calls = 0
+    private let delay: Duration
+    private let clock: FakeClock
+    init(delay: Duration, clock: FakeClock) { self.delay = delay; self.clock = clock }
+    func execute(_ proposal: ActionProposal) async -> ActionOutcome {
+        calls += 1
+        try? await Task.sleep(for: delay)
+        return ActionOutcome(proposalID: proposal.id, status: .succeeded, verification: .verified, target: nil,
+                             time: clock.now(), reason: nil)
+    }
+}
+
+private func coordinatorIntegrationChecks() async {
+    // 정책 거부는 rejected
+    do {
+        let h = await Harness()
+        let expired = proposal(.typeText(target: h.field, text: "late"), expiresAt: at(0.5))
+        let result = await h.coordinator.submit(expired)
+        check(result.status == .rejected && result.reason == "Rejected by policy: Proposal expired", "정책 거부 → rejected 상태")
+        let streamed = await take(1, from: h.coordinator.outcomes)
+        check(streamed.map(\.status) == [.rejected], "스트림에도 rejected")
+    }
+
+    // 실행기 시간 초과
+    do {
+        let clock = FakeClock(at(1))
+        let field = uiTarget()
+        let safety = AgentSafetySwitch()
+        let engine = PolicyEngine(safety: safety)
+        await engine.updateGazeFocus(field, at: at(0.5))
+        let slow = SlowExecutor(delay: .seconds(5), clock: clock)
+        let coordinator = ActionCoordinator(policy: engine, executor: slow, clock: clock, safety: safety,
+                                            executionTimeout: .milliseconds(80))
+        let started = ContinuousClock.now
+        let result = await within(3) { await coordinator.submit(proposal(.typeText(target: field, text: "hi"))) }
+        let elapsed = ContinuousClock.now - started
+        check(result?.status == .failed && (result?.reason ?? "").hasPrefix("Execution timed out"),
+              "실행기가 응답하지 않으면 시간 초과 failed")
+        check(elapsed < .seconds(2), "시간 초과는 실행기를 기다리지 않음")
+        let next = await within(3) { await coordinator.submit(proposal(.typeText(target: field, text: "again"))) }
+        check(next?.status == .failed, "다음 제안도 막히지 않고 처리됨")
+    }
+
+    // 실행 중 비상 정지 → 기다림을 끊음
+    do {
+        let clock = FakeClock(at(1))
+        let field = uiTarget()
+        let safety = AgentSafetySwitch()
+        let engine = PolicyEngine(safety: safety)
+        await engine.updateGazeFocus(field, at: at(0.5))
+        let slow = SlowExecutor(delay: .seconds(5), clock: clock)
+        let coordinator = ActionCoordinator(policy: engine, executor: slow, clock: clock, safety: safety,
+                                            executionTimeout: .seconds(30))
+        let p = proposal(.typeText(target: field, text: "hi"))
+        let queued = proposal(.typeText(target: field, text: "next"))
+        let run = Task { await coordinator.submit([p, queued]) }
+        var waited = 0
+        while await slow.calls == 0, waited < 200 {
+            try? await Task.sleep(for: .milliseconds(5))
+            waited += 1
+        }
+        let started = ContinuousClock.now
+        await coordinator.engageKillSwitch()
+        let results = await within(3) { await run.value } ?? []
+        check(ContinuousClock.now - started < .seconds(2), "비상 정지는 실행 기다림을 즉시 끊음")
+        check(results.map(\.status) == [.failed, .cancelled], "실행 중 행동은 failed(효과 불명), 남은 행동은 취소")
+        check((results.first?.reason ?? "").contains("Kill switch engaged"), "사유에 비상 정지")
+        await expect(await slow.calls == 1, "남은 행동은 실행기 미호출")
     }
 }

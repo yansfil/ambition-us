@@ -67,7 +67,9 @@ public struct AttentionCueDetector: Sendable {
                        began.start.seconds(since: region.lastSeen) <= configuration.revisitWindow {
                         regions[index].revisits += 1
                         let confidence = began.meanConfidence * min(1, 0.6 + 0.2 * Double(regions[index].revisits))
-                        cues.append(NonverbalCue(time: now, kind: .revisit, targetID: key, confidence: clamp(confidence, 0, 1)))
+                        // targetID는 내부 영역 키다. Fusion이 point를 UI 요소 token으로 바꾼다.
+                        cues.append(NonverbalCue(time: now, kind: .revisit, targetID: key, confidence: clamp(confidence, 0, 1),
+                                                 point: began.centroid, displayID: began.displayID))
                     }
                     regions[index].visits += 1
                 }
@@ -79,7 +81,8 @@ public struct AttentionCueDetector: Sendable {
             if !dwellEmitted, let start = dwellStart, current.end.seconds(since: start) >= configuration.dwellThreshold {
                 dwellEmitted = true
                 cues.append(NonverbalCue(time: now, kind: .prolongedDwell, targetID: key,
-                                         confidence: clamp(current.meanConfidence, 0, 1)))
+                                         confidence: clamp(current.meanConfidence, 0, 1),
+                                         point: current.centroid, displayID: current.displayID))
             }
         }
         prune(now: now)

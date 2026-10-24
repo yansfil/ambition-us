@@ -12,6 +12,13 @@ public protocol MonotonicClock: Sendable {
     func now() -> MonotonicTime
 }
 
+/// 앱 전체가 공유하는 기본 시계. `DispatchTime.uptimeNanoseconds`(= mach_absolute_time 기반)라
+/// AVAudioTime.hostTime·AVCapture 프레임 PTS와 같은 기준이다. 통합 코어가 인스턴스 하나를 모든 모듈에 주입한다.
+public struct UptimeClock: MonotonicClock {
+    public init() {}
+    public func now() -> MonotonicTime { MonotonicTime(nanoseconds: DispatchTime.now().uptimeNanoseconds) }
+}
+
 // MARK: - 시선
 
 public struct GazeSample: Sendable, Codable, Equatable {
@@ -37,10 +44,22 @@ public struct NonverbalCue: Sendable, Codable, Equatable {
     public enum Kind: String, Sendable, Codable { case prolongedDwell, revisit, headShake, headNod }
     public let time: MonotonicTime
     public let kind: Kind
+    /// 시선 모듈이 낼 때는 내부 영역 키(`gaze-region-N@display`)일 수 있다.
+    /// 결합 모듈(Fusion)이 `point`를 UI 요소로 해석해 `UITarget.token`으로 바꾼 뒤 AttentionContext에 싣는다.
     public let targetID: String?
     public let confidence: Double
-    public init(time: MonotonicTime, kind: Kind, targetID: String?, confidence: Double) {
+    /// 단서가 가리키는 응시 중심(전역 좌표). 머리 제스처처럼 위치가 없는 단서는 nil.
+    public let point: CGPoint?
+    public let displayID: UInt32?
+    public init(time: MonotonicTime, kind: Kind, targetID: String?, confidence: Double,
+                point: CGPoint? = nil, displayID: UInt32? = nil) {
         self.time = time; self.kind = kind; self.targetID = targetID; self.confidence = confidence
+        self.point = point; self.displayID = displayID
+    }
+
+    /// 같은 단서의 대상 키만 바꾼 사본.
+    public func withTargetID(_ targetID: String?) -> NonverbalCue {
+        NonverbalCue(time: time, kind: kind, targetID: targetID, confidence: confidence, point: point, displayID: displayID)
     }
 }
 
@@ -120,11 +139,26 @@ public struct UITarget: Sendable, Codable, Equatable, Hashable {
 // MARK: - 결합·판단·실행
 
 public struct DeicticBinding: Sendable, Codable, Equatable {
+    /// 지시어가 문장에서 맡는 역할. "이거를 이쪽으로 옮겨줘"에서 이거를=source, 이쪽으로=destination.
+    public enum Role: String, Sendable, Codable {
+        case source, destination, unknown
+    }
+
     public let word: WordTiming
     public let target: UITarget?
     public let confidence: Double
-    public init(word: WordTiming, target: UITarget?, confidence: Double) {
-        self.word = word; self.target = target; self.confidence = confidence
+    /// 조사로 정한 역할. 결합 모듈이 채우며, 모르면 unknown.
+    public let role: Role
+    public init(word: WordTiming, target: UITarget?, confidence: Double, role: Role = .unknown) {
+        self.word = word; self.target = target; self.confidence = confidence; self.role = role
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        word = try c.decode(WordTiming.self, forKey: .word)
+        target = try c.decodeIfPresent(UITarget.self, forKey: .target)
+        confidence = try c.decode(Double.self, forKey: .confidence)
+        role = try c.decodeIfPresent(Role.self, forKey: .role) ?? .unknown
     }
 }
 
@@ -157,6 +191,17 @@ public enum AgentAction: Sendable, Codable, Equatable {
 }
 
 public struct ActionProposal: Sendable, Codable, Equatable {
+    /// 제안을 만든 경로. 정책 엔진이 경로별 규칙을 적용한다.
+    public enum Origin: String, Sendable, Codable {
+        /// 명령·모델 판단에서 나온 일반 제안.
+        case intent
+        /// 판단 모듈이 "이 입력란에 받아쓰기"라고 정한 의도. typeText의 text는 이 발화의 누적 받아쓰기 텍스트다.
+        /// 직접 실행하지 않는다: 받아쓰기 원장(DictationLedger)이 실제 삽입·교정을 계산한다.
+        case dictationIntent
+        /// 받아쓰기 원장이 계산한 편집. 원장이 발급한 대기 중 편집과 일치할 때만 정책이 허용한다.
+        case dictationLedger
+    }
+
     public let id: UUID
     public let action: AgentAction
     public let basedOnUtterance: UUID
@@ -164,10 +209,24 @@ public struct ActionProposal: Sendable, Codable, Equatable {
     public let rationale: String
     public let risk: RiskLevel
     public let expiresAt: MonotonicTime
+    public let origin: Origin
     public init(id: UUID, action: AgentAction, basedOnUtterance: UUID, basedOnRevision: Int,
-                rationale: String, risk: RiskLevel, expiresAt: MonotonicTime) {
+                rationale: String, risk: RiskLevel, expiresAt: MonotonicTime, origin: Origin = .intent) {
         self.id = id; self.action = action; self.basedOnUtterance = basedOnUtterance
         self.basedOnRevision = basedOnRevision; self.rationale = rationale; self.risk = risk; self.expiresAt = expiresAt
+        self.origin = origin
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        action = try c.decode(AgentAction.self, forKey: .action)
+        basedOnUtterance = try c.decode(UUID.self, forKey: .basedOnUtterance)
+        basedOnRevision = try c.decode(Int.self, forKey: .basedOnRevision)
+        rationale = try c.decode(String.self, forKey: .rationale)
+        risk = try c.decode(RiskLevel.self, forKey: .risk)
+        expiresAt = try c.decode(MonotonicTime.self, forKey: .expiresAt)
+        origin = try c.decodeIfPresent(Origin.self, forKey: .origin) ?? .intent
     }
 }
 
@@ -193,7 +252,9 @@ public enum PolicyDecision: Sendable, Codable, Equatable {
 }
 
 public struct ActionOutcome: Sendable, Codable, Equatable {
-    public enum Status: String, Sendable, Codable { case proposed, approved, started, succeeded, failed, cancelled }
+    /// proposed(승인 대기) → approved → started → succeeded/failed.
+    /// rejected: 정책이 거부함. cancelled: 사용자 거절·시간 초과·정지·앞선 행동 실패로 실행하지 않음.
+    public enum Status: String, Sendable, Codable { case proposed, approved, started, succeeded, failed, cancelled, rejected }
     public enum Verification: String, Sendable, Codable { case verified, unverifiedAccessibility, unverifiedSynthetic, none }
     public let proposalID: UUID
     public let status: Status

@@ -35,6 +35,7 @@ enum AXAttr {
     static let focusedUIElement = "AXFocusedUIElement"
     static let focusedApplication = "AXFocusedApplication"
     static let selectedText = "AXSelectedText"
+    static let selectedTextRange = "AXSelectedTextRange"
     static let main = "AXMain"
 }
 

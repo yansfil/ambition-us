@@ -16,6 +16,7 @@ func fusionChecks() async {
         await lowConfidenceChecks()
         await dictationChecks()
         await outOfOrderChecks()
+        await cueTargetChecks()
     }
 }
 
@@ -60,6 +61,7 @@ private func twoDeicticsChecks() async {
     check(bindings[0].target?.token == "A", "이거를 → 그 순간 보던 파일 A")
     check(bindings[1].target?.token == "B", "이쪽으로 → 그 순간 보던 폴더 B")
     check(result.deictics.map(\.role) == [.source, .destination], "역할: source, destination")
+    check(bindings.map(\.role) == [.source, .destination], "계약 DeicticBinding.role에도 역할이 실림")
     check(bindings.allSatisfy { $0.confidence >= 0.35 && $0.confidence <= 1 }, "두 결합 모두 신뢰도 임계 이상")
     check(bindings[0].word.word == "이거를" && bindings[1].word.start == ft(1.8), "binding.word는 실제 발화 타이밍")
     let context = await env.fuser.context(for: update)
@@ -358,4 +360,25 @@ private func saccade(from a: CGPoint, to b: CGPoint, from start: Double, to end:
                                  uncertaintyRadius: 60, confidence: 0.8, calibrationRevision: 1, isFixation: false))
     }
     return result
+}
+
+/// 시선 모듈의 영역 키 대신 응시점의 UI 요소 token으로 바꿔 보관한다.
+private func cueTargetChecks() async {
+    let env = FusionEnv()
+    let id = UUID()
+    await env.feed(fixation(at: fileA.center, from: 95.0, to: 96.5))
+    env.clock.set(96.0)
+    await env.fuser.ingest(NonverbalCue(time: ft(96.0), kind: .prolongedDwell, targetID: "gaze-region-3@1", confidence: 0.8,
+                                        point: fileA.center, displayID: 1))
+    await env.fuser.ingest(NonverbalCue(time: ft(96.0), kind: .revisit, targetID: "gaze-region-9@1", confidence: 0.8,
+                                        point: CGPoint(x: 5000, y: 5000), displayID: 1))
+    await env.fuser.ingest(NonverbalCue(time: ft(96.0), kind: .headShake, targetID: nil, confidence: 0.8))
+    env.clock.set(96.6)
+    let context = await env.fuser.context(for: fupdate(id: id, revision: 1, [fw("음", 95.8, 96.2)]))
+    let byKind = Dictionary(uniqueKeysWithValues: context.nonverbal.map { ($0.kind, $0.targetID) })
+    check(byKind[.prolongedDwell] == "A", "응시점이 있는 dwell 단서 → UITarget.token(A)")
+    check(byKind[.revisit] == "gaze-region-9@1", "요소를 못 찾으면 원래 영역 키 유지")
+    check(byKind[.headShake] == .some(nil), "위치 없는 머리 제스처는 그대로")
+    let resolved = await env.fuser.stats().resolvedCueTargets
+    check(resolved == 1, "token으로 바꾼 단서 수")
 }

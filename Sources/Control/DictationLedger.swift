@@ -52,10 +52,11 @@ public struct DictationDelta: Sendable, Equatable {
         }
     }
 
+    /// 원장 편집 제안(`origin == .dictationLedger`). 정책 엔진은 원장이 아직 대기 중인 이 편집과 일치할 때만 허용한다.
     public func makeProposal(risk: RiskLevel = .low, expiresAt: MonotonicTime,
                              rationale: String = "Dictation") -> ActionProposal {
         ActionProposal(id: proposalID, action: action, basedOnUtterance: utteranceID, basedOnRevision: revision,
-                       rationale: rationale, risk: risk, expiresAt: expiresAt)
+                       rationale: rationale, risk: risk, expiresAt: expiresAt, origin: .dictationLedger)
     }
 }
 
@@ -85,9 +86,11 @@ public enum DictationSessionState: Sendable, Equatable {
 /// - 편집은 한 번에 하나만 진행한다. 같은 편집은 같은 idempotency key를 가지며 두 번 커밋되지 않는다.
 ///
 /// 오프셋은 모두 UTF-16 단위, 텍스트는 NFC로 정규화해 비교한다.
-public actor DictationLedger {
+public actor DictationLedger: DictationEditVerifying {
     private struct Pending {
         let key: String
+        let proposalID: UUID
+        let action: AgentAction
         let insertedTextAfter: String
         let expectedFieldValue: String
         let expectedSelection: DictationTextRange
@@ -200,15 +203,17 @@ public actor DictationLedger {
 
         let digest = String(stableHash(inserted + "\u{1F}" + desired), radix: 16)
         let key = "dictation/\(update.utteranceID.uuidString)/\(target.token)/\(session.editSequence)/\(digest)"
-        session.pending = Pending(key: key, insertedTextAfter: desired, expectedFieldValue: expectedValue,
+        let delta = DictationDelta(idempotencyKey: key, proposalID: stableUUID(from: key),
+                                   utteranceID: update.utteranceID, revision: update.revision,
+                                   target: session.target, edit: edit, insertedTextAfter: desired,
+                                   expectedFieldValue: expectedValue, expectedSelection: expectedSelection)
+        session.pending = Pending(key: key, proposalID: delta.proposalID, action: delta.action,
+                                  insertedTextAfter: desired, expectedFieldValue: expectedValue,
                                   expectedSelection: expectedSelection, isFinal: update.isFinal)
         session.hasAttempted = true
         pendingOwners[key] = update.utteranceID
 
-        return .apply(DictationDelta(idempotencyKey: key, proposalID: stableUUID(from: key),
-                                     utteranceID: update.utteranceID, revision: update.revision,
-                                     target: session.target, edit: edit, insertedTextAfter: desired,
-                                     expectedFieldValue: expectedValue, expectedSelection: expectedSelection))
+        return .apply(delta)
     }
 
     // MARK: 실행 결과
@@ -260,6 +265,15 @@ public actor DictationLedger {
     public func forget(utteranceID: UUID) {
         if let key = sessions[utteranceID]?.pending?.key { pendingOwners[key] = nil }
         sessions[utteranceID] = nil
+    }
+
+    // MARK: 정책 확인
+
+    /// 정책 엔진용: 원장이 계획하고 아직 커밋·포기하지 않은 편집과 ID·행동이 같은가.
+    public func isPendingLedgerEdit(_ proposal: ActionProposal) -> Bool {
+        guard proposal.origin == .dictationLedger, let session = sessions[proposal.basedOnUtterance],
+              let pending = session.pending, case .active = session.state else { return false }
+        return pending.proposalID == proposal.id && pending.action == proposal.action
     }
 
     // MARK: 조회

@@ -27,13 +27,20 @@ public struct IntentEngineConfiguration: Sendable, Equatable {
 ///
 /// 순서: 오래된 revision 무시 → 로컬 빠른 경로(명령·받아쓰기) → 선제 제안(머뭇거림 + 응시) → 애매하면 모델.
 /// - 같은 발화의 새 revision이 오면 진행 중인 모델 호출을 취소하고, 늦게 도착한 결과는 버린다.
-/// - 받아쓰기 typeText는 같은 발화에서 이미 제안한 부분을 뺀 **증분** 텍스트다(안정 구간만).
+/// - 받아쓰기는 실행 제안이 아니라 **받아쓰기 의도**다: `origin == .dictationIntent`이고 typeText의 text는
+///   이 발화에서 받아쓰기로 정한 **누적** 텍스트다(완결된 안정 문장만). 실제 삽입·교정량은 받아쓰기 원장이
+///   이미 넣은 텍스트와 비교해 계산한다. 이미 받아쓴 구간이 전사 교정으로 바뀌면 받아쓰기 시작점부터 다시 계산해
+///   교정된 누적 텍스트를 낸다.
 /// - 선제 제안은 행동을 담지 않으며 실행 제안으로 바뀌지 않는다.
 public actor IntentEngine: IntentProposing {
     private struct UtteranceState {
         var latestRevision: Int
         var consumed: String = ""
         var dictationTarget: String?
+        /// 받아쓰기를 시작하기 전까지 처리한 발화 앞부분. nil이면 아직 받아쓰기 안 함.
+        var dictationPrefix: String?
+        /// 이 발화에서 받아쓰기로 정한 누적 텍스트.
+        var dictated: String = ""
         var lastAction: AgentAction?
         var touched: UInt64
     }
@@ -72,7 +79,18 @@ public actor IntentEngine: IntentProposing {
         let now = clock.now()
         guard var state = utterances[utteranceID] else { return .none }
         let resolver = LocalIntentResolver(minBindingConfidence: configuration.minBindingConfidence)
-        let local = resolver.resolve(context, consumed: state.consumed, dictationTarget: state.dictationTarget)
+        var local = resolver.resolve(context, consumed: state.consumed, dictationTarget: state.dictationTarget)
+        var restartedDictation = false
+        if case .blocked = local, let prefix = state.dictationPrefix,
+           !KoreanText.normalize(update.text).hasPrefix(state.consumed),
+           KoreanText.normalize(update.text).hasPrefix(prefix) {
+            // 받아쓴 구간 안에서 전사가 고쳐졌다. 받아쓰기 시작점부터 다시 계산하면 원장이 교정 편집을 만든다.
+            let redo = resolver.resolve(context, consumed: prefix, dictationTarget: state.dictationTarget)
+            if case .dictation = redo {
+                local = redo
+                restartedDictation = true
+            }
+        }
 
         switch local {
         case .action(let action, let rationale, let consumed, let commandText):
@@ -83,12 +101,15 @@ public actor IntentEngine: IntentProposing {
             return .proposal(makeProposal(action, update: update, rationale: rationale,
                                           risk: RiskClassifier.risk(for: action, commandText: commandText), now: now))
         case .dictation(let target, let text, let consumed):
+            if state.dictationPrefix == nil { state.dictationPrefix = state.consumed }
+            state.dictated = restartedDictation ? text : state.dictated + text
             state.consumed = consumed
             state.dictationTarget = target.token
             utterances[utteranceID] = state
-            let action = AgentAction.typeText(target: target, text: text)
+            let action = AgentAction.typeText(target: target, text: state.dictated)
             return .proposal(makeProposal(action, update: update, rationale: "시선이 머문 입력란에 받아쓰기(안정 구간)",
-                                          risk: RiskClassifier.risk(for: action, commandText: nil), now: now))
+                                          risk: RiskClassifier.risk(for: action, commandText: nil), now: now,
+                                          origin: .dictationIntent))
         case .blocked:
             return .none
         case .wait, .nothing, .ambiguous:
@@ -125,10 +146,11 @@ public actor IntentEngine: IntentProposing {
     }
 
     private func makeProposal(_ action: AgentAction, update: TranscriptUpdate, rationale: String,
-                              risk: RiskLevel, now: MonotonicTime) -> ActionProposal {
+                              risk: RiskLevel, now: MonotonicTime,
+                              origin: ActionProposal.Origin = .intent) -> ActionProposal {
         ActionProposal(id: UUID(), action: action, basedOnUtterance: update.utteranceID,
                        basedOnRevision: update.revision, rationale: rationale, risk: risk,
-                       expiresAt: now.adding(seconds: configuration.proposalTTL))
+                       expiresAt: now.adding(seconds: configuration.proposalTTL), origin: origin)
     }
 
     // MARK: - 선제 제안

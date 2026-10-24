@@ -99,9 +99,10 @@ private func secondsTime(_ seconds: Double) -> MonotonicTime {
     MonotonicTime(nanoseconds: UInt64(seconds * 1_000_000_000))
 }
 
-private func bind(_ word: String, at seconds: Double, to target: UITarget?, confidence: Double = 0.9) -> DeicticBinding {
+private func bind(_ word: String, at seconds: Double, to target: UITarget?, confidence: Double = 0.9,
+                  role: DeicticBinding.Role = .unknown) -> DeicticBinding {
     DeicticBinding(word: WordTiming(word: word, start: secondsTime(seconds), end: secondsTime(seconds + 0.2), confidence: 0.9),
-                   target: target, confidence: confidence)
+                   target: target, confidence: confidence, role: role)
 }
 
 private func context(id: UUID = UUID(), revision: Int = 1, text: String, stable: String? = nil, final: Bool = false,
@@ -143,18 +144,32 @@ private func localFastPathChecks() async throws {
     let p1 = proposal(r1)
     check(p1?.action == .typeText(target: editor, text: "안녕하세요."), "입력란 응시 + 내용 발화 → 안정 구간 typeText")
     check(p1?.risk == .low && p1?.basedOnRevision == 1 && p1?.basedOnUtterance == id, "받아쓰기 제안 메타데이터")
+    check(p1?.origin == .dictationIntent, "받아쓰기는 실행 제안이 아니라 받아쓰기 의도(origin)")
     check(p1?.expiresAt == MonotonicTime(nanoseconds: clock.now().nanoseconds + 4_000_000_000), "제안 만료 = now + 4초")
 
     let r2 = await engine.evaluate(context(id: id, revision: 2, text: "안녕하세요. 오늘 회의는 세 시입니다. 그리고",
                                            stable: "안녕하세요. 오늘 회의는 세 시입니다.", gazed: editor))
-    check(proposal(r2)?.action == .typeText(target: editor, text: " 오늘 회의는 세 시입니다."), "다음 revision은 증분만 입력")
+    check(proposal(r2)?.action == .typeText(target: editor, text: "안녕하세요. 오늘 회의는 세 시입니다."),
+          "다음 revision은 새 안정 문장까지의 누적 받아쓰기 텍스트(증분은 원장이 계산)")
 
     let r3 = await engine.evaluate(context(id: id, revision: 3, text: "안녕하세요. 오늘 회의는 세 시입니다. 그리고", stable: "안녕하세요. 오늘 회의는 세 시입니다.", gazed: editor))
     check(r3 == .none, "새 안정 문장이 없으면 아무것도 안 함")
 
     let r4 = await engine.evaluate(context(id: id, revision: 4, text: "안녕하세요. 오늘 회의는 세 시입니다. 그리고 장소는 3층입니다",
                                            final: true, gazed: editor))
-    check(proposal(r4)?.action == .typeText(target: editor, text: " 그리고 장소는 3층입니다"), "최종 발화는 남은 부분 전체 입력")
+    check(proposal(r4)?.action == .typeText(target: editor, text: "안녕하세요. 오늘 회의는 세 시입니다. 그리고 장소는 3층입니다"),
+          "최종 발화는 남은 부분까지 전체 누적 텍스트")
+
+    // 이미 받아쓴 구간이 전사 교정으로 바뀌면 받아쓰기 시작점부터 다시 계산한다(원장이 교정 편집을 만든다).
+    let fixID = UUID()
+    let f1 = await engine.evaluate(context(id: fixID, revision: 1, text: "회의는 세시입니다. 그리고", stable: "회의는 세시입니다.",
+                                           gazed: editor))
+    check(proposal(f1)?.action == .typeText(target: editor, text: "회의는 세시입니다."), "교정 전 받아쓰기")
+    let f2 = await engine.evaluate(context(id: fixID, revision: 2, text: "회의는 세 시입니다.", final: true, gazed: editor))
+    check(proposal(f2)?.action == .typeText(target: editor, text: "회의는 세 시입니다.") && proposal(f2)?.origin == .dictationIntent,
+          "받아쓴 구간이 바뀌면 교정된 누적 텍스트로 다시 의도")
+    let f3 = await engine.evaluate(context(id: fixID, revision: 3, text: "회의는 세 시입니다.", final: true, gazed: editor))
+    check(f3 == .none, "같은 최종 텍스트 재전송은 의도 없음")
 
     let partial = await engine.evaluate(context(text: "오늘 저녁에는", gazed: editor))
     check(partial == .none, "문장이 끝나지 않은 비최종 발화는 대기")
@@ -180,6 +195,16 @@ private func localFastPathChecks() async throws {
         bind("저", at: 1, to: folderItem), bind("이", at: 2, to: fileItem),
     ]))
     check(proposal(moveReversed)?.action == .move(source: fileItem, destination: folderItem), "목적지 조사(…로)로 방향 결정")
+
+    let byRole = await engine.evaluate(context(text: "여기로 이거 옮겨줘", bindings: [
+        bind("여기로", at: 1, to: folderItem, role: .destination), bind("이거", at: 2, to: fileItem, role: .source),
+    ]))
+    check(proposal(byRole)?.action == .move(source: fileItem, destination: folderItem), "결합 모듈이 준 역할로 이동 방향 결정")
+    let roleOverridesOrder = await engine.evaluate(context(text: "그거 저거 옮겨줘", bindings: [
+        bind("그거", at: 1, to: folderItem, role: .destination), bind("저거", at: 2, to: fileItem, role: .source),
+    ]))
+    check(proposal(roleOverridesOrder)?.action == .move(source: fileItem, destination: folderItem),
+          "조사가 없어도 역할이 있으면 말한 순서보다 역할 우선")
 
     let insert = await engine.evaluate(context(text: "이 파일을 저 폴더에 넣어줘", bindings: [
         bind("이", at: 1, to: fileItem), bind("저", at: 2, to: folderItem),

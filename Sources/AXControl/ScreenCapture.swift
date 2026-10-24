@@ -38,12 +38,15 @@ public enum ScreenCaptureError: Error, Sendable, Equatable, CustomStringConverti
     case windowNotFound
     case emptyRegion
     case captureFailed(String)
+    /// Gaze 자신의 창(오버레이·말풍선)은 캡처하지 않는다.
+    case ownWindowExcluded
 
     public var description: String {
         switch self {
         case .permissionDenied: "screen_recording_permission_missing: grant Screen Recording access"
         case .displayNotFound: "screenshot_failed: display not found"
         case .windowNotFound: "window_not_found: window is not on screen"
+        case .ownWindowExcluded: "own_process_rejected: refusing to capture Gaze's own overlay window"
         case .emptyRegion: "invalid_argument: capture region is empty or off-screen"
         case .captureFailed(let message): "screenshot_failed: \(message)"
         }
@@ -56,11 +59,23 @@ public struct ScreenCapture: Sendable {
     public var policy: ScreenshotScalingPolicy
     public var excludeOwnProcess: Bool
     public var showsCursor: Bool
+    /// 오버레이 창 번호(CGWindowID) 목록을 돌려준다. 보통 `OverlayController.windowRegistry`의 스냅샷.
+    /// 이 창들은 디스플레이 캡처에서 빼고, 창 캡처 대상으로도 거부한다.
+    public var excludedWindowNumbers: (@Sendable () -> Set<Int>)?
 
-    public init(policy: ScreenshotScalingPolicy = .claudeMaximum, excludeOwnProcess: Bool = true, showsCursor: Bool = false) {
+    public init(policy: ScreenshotScalingPolicy = .claudeMaximum, excludeOwnProcess: Bool = true, showsCursor: Bool = false,
+                excludedWindowNumbers: (@Sendable () -> Set<Int>)? = nil) {
         self.policy = policy
         self.excludeOwnProcess = excludeOwnProcess
         self.showsCursor = showsCursor
+        self.excludedWindowNumbers = excludedWindowNumbers
+    }
+
+    /// 캡처에서 뺄 창인가: 오버레이 레지스트리에 있거나, 자기 프로세스 제외가 켜져 있고 주인이 Gaze 자신일 때.
+    public static func shouldExclude(windowNumber: Int, ownerPID: Int32?, ownPID: Int32, excludeOwnProcess: Bool,
+                                     registry: Set<Int>) -> Bool {
+        if registry.contains(windowNumber) { return true }
+        return excludeOwnProcess && ownerPID == ownPID
     }
 
     /// 디스플레이 전체 또는 일부를 캡처한다.
@@ -79,9 +94,13 @@ public struct ScreenCapture: Sendable {
             guard !source.isNull, source.width >= 1, source.height >= 1 else { throw ScreenCaptureError.emptyRegion }
         }
 
-        let ownApps = excludeOwnProcess
-            ? content.applications.filter { $0.processID == ProcessInfo.processInfo.processIdentifier } : []
-        let filter = SCContentFilter(display: display, excludingApplications: ownApps, exceptingWindows: [])
+        let ownPID = ProcessInfo.processInfo.processIdentifier
+        let registry = excludedWindowNumbers?() ?? []
+        let excluded = content.windows.filter {
+            Self.shouldExclude(windowNumber: Int($0.windowID), ownerPID: $0.owningApplication?.processID, ownPID: ownPID,
+                               excludeOwnProcess: excludeOwnProcess, registry: registry)
+        }
+        let filter = SCContentFilter(display: display, excludingWindows: excluded)
         let config = SCStreamConfiguration()
         if region != nil {
             // sourceRect는 디스플레이 좌상단 기준 포인트.
@@ -103,6 +122,11 @@ public struct ScreenCapture: Sendable {
         try ensurePermission()
         let content = try await shareableContent()
         guard let window = content.windows.first(where: { $0.windowID == windowID }) else { throw ScreenCaptureError.windowNotFound }
+        if Self.shouldExclude(windowNumber: Int(windowID), ownerPID: window.owningApplication?.processID,
+                              ownPID: ProcessInfo.processInfo.processIdentifier, excludeOwnProcess: excludeOwnProcess,
+                              registry: excludedWindowNumbers?() ?? []) {
+            throw ScreenCaptureError.ownWindowExcluded
+        }
         let filter = SCContentFilter(desktopIndependentWindow: window)
         let config = SCStreamConfiguration()
         config.ignoreShadowsSingleWindow = true

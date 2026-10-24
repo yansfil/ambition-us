@@ -7,6 +7,16 @@ public enum DeicticRole: String, Sendable, Codable {
     case destination
 }
 
+extension DeicticRole {
+    /// 계약 타입(`DeicticBinding.Role`)으로 옮긴 값.
+    public var bindingRole: DeicticBinding.Role {
+        switch self {
+        case .source: .source
+        case .destination: .destination
+        }
+    }
+}
+
 /// 지시 대상의 종류.
 public enum DeicticKind: String, Sendable, Codable {
     /// 사물: 이거, 저것, 이 파일 …

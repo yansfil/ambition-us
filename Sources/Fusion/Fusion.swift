@@ -2,7 +2,8 @@ import AgentContracts
 
 // Fusion 모듈: 시선(GazeSample)과 음성(WordTiming)을 실제 시각 기준으로 결합한다.
 //
-// - `AttentionFuser`        : `AttentionFusing` 구현 actor. 링 버퍼, 지시어 결합, 받아쓰기 대상 선택.
+// - `AttentionFuser`        : `AttentionFusing` 구현 actor. 링 버퍼, 지시어 결합(역할 포함), 받아쓰기 대상 선택,
+//                             위치 있는 비언어 단서의 UI 요소 token 해석.
 // - `DeicticLexicon`        : 한국어 지시어 사전(이거/이쪽/이 파일 …)과 조사 기반 역할(source/destination).
 // - `FusionConfiguration`   : 선행(lead)/후행(lag) 창, 신뢰도 임계값, 캐시 크기 등.
 // - `FixationAnalyzer`      : 응시(fixation) 구간 분할과 증거 가중치 계산(순수 함수).

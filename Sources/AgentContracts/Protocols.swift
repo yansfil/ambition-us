@@ -1,6 +1,9 @@
 import Foundation
 
 /// 시선 소스. 자체 파이프라인(Vision+CoreML)과 Beam SDK 어댑터가 같은 인터페이스를 구현한다.
+///
+/// 모든 스트림은 소비자 하나를 전제로 한다. 여러 모듈(오버레이·Fusion·정책)이 받아야 하면
+/// 앱 코어의 `AsyncBroadcaster`로 나눈다. 스트림은 stop() 뒤에도 열려 있어 다시 start()할 수 있다.
 public protocol GazeSource: Sendable {
     var samples: AsyncStream<GazeSample> { get }
     var nonverbalCues: AsyncStream<NonverbalCue> { get }

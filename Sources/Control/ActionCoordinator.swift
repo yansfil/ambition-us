@@ -1,5 +1,6 @@
 import AgentContracts
 import Foundation
+import Synchronization
 
 /// 사용자 승인을 기다리는 제안. 오버레이의 `OverlayState.pendingApproval`에 그대로 쓸 수 있다.
 public struct ApprovalRequest: Sendable, Equatable {
@@ -20,13 +21,16 @@ public struct ApprovalRequest: Sendable, Equatable {
 /// - 배치 안에서 하나라도 성공하지 못하면(실패·거부·시간 초과) 나머지는 실행하지 않고
 ///   `cancelled`로 보고한다. 실패 뒤에는 "Not executed: an earlier action failed".
 /// - 이미 처리한 제안 ID가 다시 오면 실행하지 않는다.
-/// - `pause()`·`engageKillSwitch()`는 승인 대기를 즉시 끊고, 진행 중인 배치의 남은 행동을 취소한다.
+/// - 정책이 거부한 제안은 `rejected`로 보고한다.
+/// - 실행기가 `executionTimeout` 안에 끝내지 않으면 기다림을 끊고 `failed`(효과 알 수 없음)로 보고한다.
+/// - `pause()`·`engageKillSwitch()`는 승인 대기와 실행 기다림을 즉시 끊고, 진행 중인 배치의 남은 행동을 취소한다.
 public actor ActionCoordinator {
     public static let earlierFailureReason = "Not executed: an earlier action failed"
     public static let earlierRejectionReason = "Not executed: an earlier action was rejected"
     public static let earlierTimeoutReason = "Not executed: an earlier action was not approved in time"
 
-    /// 상태가 바뀔 때마다 하나씩: proposed(승인 대기) → approved → started → succeeded/failed, 또는 cancelled.
+    /// 상태가 바뀔 때마다 하나씩: proposed(승인 대기) → approved → started → succeeded/failed,
+    /// 또는 rejected(정책 거부)·cancelled.
     public nonisolated let outcomes: AsyncStream<ActionOutcome>
     /// 승인 요청이 생기면 그 요청, 해소되면 nil.
     public nonisolated let approvalRequests: AsyncStream<ApprovalRequest?>
@@ -38,6 +42,7 @@ public actor ActionCoordinator {
     private let executor: any ActionExecuting
     private let clock: any MonotonicClock
     private let approvalTimeout: Duration
+    private let executionTimeout: Duration
 
     private enum Resolution: Sendable {
         case approved
@@ -58,21 +63,33 @@ public actor ActionCoordinator {
         let skipRemaining: String?
     }
 
+    /// 실행기 결과를 기다리는 중인 행동. 시간 초과·정지 때 기다림을 끊는다.
+    private struct RunningExecution {
+        let proposal: ActionProposal
+        let gate: ExecutionGate
+        let work: Task<Void, Never>
+        let timer: Task<Void, Never>
+    }
+
     private var tail: Task<Void, Never>?
     private var pending: PendingApproval?
+    private var running: RunningExecution?
     private var haltEpoch = 0
     private var seenProposalIDs: Set<UUID> = []
 
     /// - Parameters:
     ///   - safety: `PolicyEngine`과 같은 인스턴스를 넘겨야 한 번의 정지로 둘 다 멈춘다.
     ///   - clock: 시선·AX와 같은 단조 시계. 결과 시각과 정책 판단 시각에 쓴다.
+    ///   - executionTimeout: 실행기 응답을 기다리는 최대 시간. 넘기면 failed(효과 알 수 없음).
     public init(policy: any ActionAuthorizing, executor: any ActionExecuting, clock: any MonotonicClock,
-                safety: AgentSafetySwitch, approvalTimeout: Duration = .seconds(20)) {
+                safety: AgentSafetySwitch, approvalTimeout: Duration = .seconds(20),
+                executionTimeout: Duration = .seconds(8)) {
         self.policy = policy
         self.executor = executor
         self.clock = clock
         self.safety = safety
         self.approvalTimeout = approvalTimeout
+        self.executionTimeout = executionTimeout
         (outcomes, outcomeSink) = AsyncStream.makeStream(of: ActionOutcome.self)
         (approvalRequests, approvalSink) = AsyncStream.makeStream(of: ApprovalRequest?.self)
     }
@@ -142,6 +159,12 @@ public actor ActionCoordinator {
     private func halt(reason: String) {
         haltEpoch += 1
         resolvePending(nil, with: .halted(reason))
+        if let running {
+            // 실행기 호출 자체는 되돌릴 수 없다. 기다림만 끊고 효과는 알 수 없다고 보고한다.
+            running.gate.resolve(failure(running.proposal,
+                                         reason: "Execution abandoned: \(reason); the effect is unknown"))
+            running.work.cancel()
+        }
     }
 
     private func haltReason(since epoch: Int) -> String? {
@@ -183,7 +206,8 @@ public actor ActionCoordinator {
         case .execute:
             break
         case .reject(let reason):
-            return notExecuted(proposal, reason: "Rejected by policy: \(reason)", skip: Self.earlierRejectionReason)
+            return Step(outcome: emit(proposal, .rejected, reason: "Rejected by policy: \(reason)"),
+                        skipRemaining: Self.earlierRejectionReason)
         case .requireApproval(let reason):
             let now = clock.now()
             guard now < proposal.expiresAt else {
@@ -216,9 +240,40 @@ public actor ActionCoordinator {
         }
 
         emit(proposal, .started, reason: nil)
-        let result = await executor.execute(proposal)
+        let result = await execute(proposal)
         outcomeSink.yield(result)
         return Step(outcome: result, skipRemaining: result.status == .succeeded ? nil : Self.earlierFailureReason)
+    }
+
+    /// 실행기 결과, 시간 초과, 정지 중 먼저 오는 것.
+    private func execute(_ proposal: ActionProposal) async -> ActionOutcome {
+        let gate = ExecutionGate()
+        let executor = self.executor
+        let timeout = executionTimeout
+        let timeoutOutcome = failure(proposal, reason: "Execution timed out after \(Self.describe(timeout)); the effect is unknown")
+        let result = await withCheckedContinuation { (continuation: CheckedContinuation<ActionOutcome, Never>) in
+            gate.install(continuation)
+            let work = Task { gate.resolve(await executor.execute(proposal)) }
+            let timer = Task {
+                do { try await Task.sleep(for: timeout) } catch { return }
+                gate.resolve(timeoutOutcome)
+            }
+            running = RunningExecution(proposal: proposal, gate: gate, work: work, timer: timer)
+        }
+        running?.timer.cancel()
+        running = nil
+        return result
+    }
+
+    private func failure(_ proposal: ActionProposal, reason: String) -> ActionOutcome {
+        ActionOutcome(proposalID: proposal.id, status: .failed, verification: .none,
+                      target: proposal.action.primaryTarget, time: clock.now(), reason: reason)
+    }
+
+    private static func describe(_ duration: Duration) -> String {
+        let parts = duration.components
+        let seconds = Double(parts.seconds) + Double(parts.attoseconds) / 1e18
+        return seconds >= 1 ? String(format: "%.0fs", seconds) : String(format: "%.0fms", seconds * 1000)
     }
 
     private func waitForApproval(_ request: ApprovalRequest, timeout: Duration) async -> Resolution {
@@ -256,5 +311,39 @@ public actor ActionCoordinator {
                                     target: proposal.action.primaryTarget, time: clock.now(), reason: reason)
         outcomeSink.yield(outcome)
         return outcome
+    }
+}
+
+/// 실행기 결과·시간 초과·정지 중 처음 도착한 결과로 한 번만 재개한다.
+final class ExecutionGate: Sendable {
+    private struct State {
+        var continuation: CheckedContinuation<ActionOutcome, Never>?
+        var early: ActionOutcome?
+        var resolved = false
+    }
+
+    private let state = Mutex(State())
+
+    func install(_ continuation: CheckedContinuation<ActionOutcome, Never>) {
+        let early = state.withLock { state -> ActionOutcome? in
+            if let early = state.early { return early }
+            state.continuation = continuation
+            return nil
+        }
+        if let early { continuation.resume(returning: early) }
+    }
+
+    func resolve(_ outcome: ActionOutcome) {
+        let continuation = state.withLock { state -> CheckedContinuation<ActionOutcome, Never>? in
+            guard !state.resolved else { return nil }
+            state.resolved = true
+            guard let continuation = state.continuation else {
+                state.early = outcome
+                return nil
+            }
+            state.continuation = nil
+            return continuation
+        }
+        continuation?.resume(returning: outcome)
     }
 }

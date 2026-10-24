@@ -24,6 +24,7 @@ struct LocalIntentResolver {
         let word: String
         let start: MonotonicTime
         let target: UITarget
+        let role: DeicticBinding.Role
     }
 
     func resolve(_ context: AttentionContext, consumed: String, dictationTarget: String?) -> LocalDecision {
@@ -91,7 +92,8 @@ struct LocalIntentResolver {
         context.bindings
             .compactMap { binding -> ResolvedBinding? in
                 guard let target = binding.target, binding.confidence >= minBindingConfidence else { return nil }
-                return ResolvedBinding(word: binding.word.word, start: binding.word.start, target: target)
+                return ResolvedBinding(word: binding.word.word, start: binding.word.start, target: target,
+                                       role: binding.role)
             }
             .sorted { $0.start < $1.start }
     }
@@ -158,9 +160,23 @@ struct LocalIntentResolver {
         }
     }
 
-    /// 목적지 조사(…로/…에)가 붙은 쪽을 목적지로, 없으면 말한 순서(먼저=출발, 나중=목적지)로 정한다.
+    /// 결합 모듈이 정한 역할(source/destination)이 한쪽을 분명히 가리키면 그것을 따른다.
+    /// 아니면 목적지 조사(…로/…에)가 붙은 쪽을 목적지로, 없으면 말한 순서(먼저=출발, 나중=목적지)로 정한다.
     private func moveDirection(_ targets: [UITarget], resolved: [ResolvedBinding], pending: String,
                                verbOffset: Int) -> (UITarget, UITarget) {
+        let first = targets[0], second = targets[1]
+        func roles(of target: UITarget) -> Set<DeicticBinding.Role> {
+            Set(resolved.filter { $0.target.token == target.token }.map(\.role))
+        }
+        let firstRoles = roles(of: first), secondRoles = roles(of: second)
+        if firstRoles.contains(.destination) && !firstRoles.contains(.source)
+            && !secondRoles.contains(.destination) {
+            return (second, first)
+        }
+        if secondRoles.contains(.destination) && !secondRoles.contains(.source)
+            && !firstRoles.contains(.destination) {
+            return (first, second)
+        }
         let tokens = KoreanText.tokens(pending)
         let verbToken = tokens.firstIndex { $0.end > verbOffset } ?? tokens.count
         let positions = KoreanText.locate(words: resolved.map(\.word), in: tokens)
@@ -174,7 +190,6 @@ struct LocalIntentResolver {
                 destinations.insert(binding.target.token)
             }
         }
-        let first = targets[0], second = targets[1]
         if destinations.contains(first.token) && !destinations.contains(second.token) {
             return (second, first)
         }

@@ -97,11 +97,17 @@ public actor AttentionFuser: AttentionFusing {
         evict(now: now)
     }
 
+    /// 위치가 있는 단서(dwell·revisit)는 그 지점의 UI 요소를 찾아 `targetID`를 `UITarget.token`으로 바꿔 보관한다.
+    /// 시선 모듈의 영역 키(`gaze-region-N@display`)는 판단 모듈이 알 수 없기 때문이다. 요소를 못 찾으면 원래 키를 둔다.
     public func ingest(_ cue: NonverbalCue) async {
-        let now = clock.now()
-        guard acceptsCue(at: cue.time, confidence: cue.confidence, now: now) else { return }
-        nonverbalCues.insert(cue)
-        evict(now: now)
+        guard acceptsCue(at: cue.time, confidence: cue.confidence, now: clock.now()) else { return }
+        var stored = cue
+        if let point = cue.point, point.x.isFinite, point.y.isFinite, let target = await resolveTarget(at: point) {
+            stored = cue.withTargetID(target.token)
+            counters.resolvedCueTargets += 1
+        }
+        nonverbalCues.insert(stored)
+        evict(now: clock.now())
     }
 
     public func ingest(_ cue: ParalinguisticCue) async {
@@ -199,7 +205,8 @@ public actor AttentionFuser: AttentionFusing {
         let windowSpan = TimeSpan(lower: window.lowerTime, upper: window.upperTime)
 
         func unbound(_ outcome: BindingOutcome, count: Int = 0, point: CGPoint? = nil, radius: Double? = nil) -> ResolvedDeictic {
-            ResolvedDeictic(match: match, binding: DeicticBinding(word: word, target: nil, confidence: 0),
+            ResolvedDeictic(match: match, binding: DeicticBinding(word: word, target: nil, confidence: 0,
+                                                                  role: match.role.bindingRole),
                             outcome: outcome, point: point, uncertaintyRadius: radius, sampleCount: count)
         }
 
@@ -280,7 +287,8 @@ public actor AttentionFuser: AttentionFusing {
         guard confidence >= c.minBindingConfidence else {
             return unbound(.lowConfidence(confidence), count: inWindowCount, point: winner.point, radius: winner.uncertainty)
         }
-        return ResolvedDeictic(match: match, binding: DeicticBinding(word: word, target: target, confidence: confidence),
+        return ResolvedDeictic(match: match, binding: DeicticBinding(word: word, target: target, confidence: confidence,
+                                                                     role: match.role.bindingRole),
                                outcome: .bound, point: winner.point, uncertaintyRadius: winner.uncertainty,
                                sampleCount: inWindowCount)
     }
