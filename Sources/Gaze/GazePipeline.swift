@@ -20,8 +20,17 @@ public struct UncertaintyConfiguration: Sendable, Equatable {
     }
 }
 
+/// 고정(fixation) 중 표시점 안정화. 고정이 확정되면 필터 출력 대신 고정 중심(처음엔 누적 평균,
+/// 이후 시간 상수 `timeConstant`의 지수 평균)을 내보내 강조 표시가 떨리지 않게 한다. 사케이드가 오면 바로 필터 출력으로 돌아간다.
+public struct FixationStabilization: Sendable, Equatable {
+    public var enabled = true
+    public var timeConstant = 0.45
+    public init() {}
+}
+
 public struct GazePipelineConfiguration: Sendable {
     public var filter = OneEuroParameters()
+    public var stabilization = FixationStabilization()
     public var fixation = FixationDetector.Configuration()
     public var attention = AttentionCueDetector.Configuration()
     public var headGesture = HeadGestureDetector.Configuration()
@@ -50,6 +59,7 @@ public struct GazePipeline: Sendable {
     private var attention: AttentionCueDetector
     private var headGestures: HeadGestureDetector
     private var jitterSquared = 0.0
+    private var stabilized: (fixationID: Int, point: SIMD2<Double>)?
     private var lastDisplayID: UInt32?
     private var lastRevision: Int?
     private var lastTime: MonotonicTime?
@@ -102,10 +112,11 @@ public struct GazePipeline: Sendable {
                                                       confidence: confidence)
         let fixation = fixations.update(point: filtered, time: time, displayID: displayID, confidence: confidence)
         cues += attention.update(fixation, uncertaintyRadius: radius, now: time)
+        let shown = stabilize(filtered, fixation: fixation, dt: gap)
         lastDisplayID = displayID
         lastRevision = calibrationRevision
         lastTime = time
-        let sample = GazeSample(time: time, displayID: displayID, point: filtered, uncertaintyRadius: radius,
+        let sample = GazeSample(time: time, displayID: displayID, point: shown, uncertaintyRadius: radius,
                                 confidence: clamp(confidence, 0, 1), calibrationRevision: calibrationRevision,
                                 isFixation: fixation.isFixation)
         return GazePipelineOutput(sample: sample, cues: cues)
@@ -129,8 +140,28 @@ public struct GazePipeline: Sendable {
         return GazePipelineOutput(cues: cues)
     }
 
+    /// 고정 중이면 고정 중심 쪽으로 안정화한 점, 아니면 필터 출력.
+    private mutating func stabilize(_ filtered: CGPoint, fixation: FixationUpdate, dt: Double) -> CGPoint {
+        let options = configuration.stabilization
+        guard options.enabled, fixation.isFixation, let current = fixation.current else {
+            stabilized = nil
+            return filtered
+        }
+        let value = SIMD2<Double>(Double(filtered.x), Double(filtered.y))
+        if let previous = stabilized, previous.fixationID == current.id {
+            let alpha = clamp(max(dt.isFinite ? dt / max(options.timeConstant, 1e-3) : 1,
+                                  1 / Double(max(current.sampleCount, 1))), 0, 1)
+            stabilized = (current.id, previous.point + (value - previous.point) * alpha)
+        } else {
+            stabilized = (current.id, SIMD2(Double(current.centroid.x), Double(current.centroid.y)))
+        }
+        let point = stabilized!.point
+        return CGPoint(x: point.x, y: point.y)
+    }
+
     private mutating func resetTracking(at time: MonotonicTime) -> [NonverbalCue] {
         filter.reset()
+        stabilized = nil
         jitterSquared = 0
         let ended = fixations.reset()
         return attention.update(ended, uncertaintyRadius: 0, now: time)

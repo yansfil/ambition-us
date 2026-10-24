@@ -22,5 +22,7 @@ let package = Package(
         .executableTarget(name: "GazeApp", dependencies: modules + ["AppCore"]),
         // Xcode 없는 환경에서 `swift run GazeChecks`로 실행하는 검사 하네스.
         .executableTarget(name: "GazeChecks", dependencies: modules + ["AppCore"]),
+        // 카메라 없이 시선 CNN 패리티·지연·필터 조정을 확인하는 도구(`swift run -c release GazeBench help`).
+        .executableTarget(name: "GazeBench", dependencies: ["AgentContracts", "Gaze"]),
     ]
 )

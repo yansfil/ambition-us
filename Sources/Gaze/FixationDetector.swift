@@ -40,6 +40,8 @@ public struct FixationDetector: Sendable {
         /// 이 시간 이하의 속도 스파이크는 잡음으로 본다.
         public var maximumGap: Double = 0.08
         public var mergeRadiusDegrees: Double = 1.5
+        /// 느린 드리프트가 한 고정으로 계속 이어지지 않게, 중심에서 이만큼 벗어나면 새 고정으로 나눈다(도).
+        public var maximumDispersionDegrees: Double = 2.5
         public init() {}
     }
 
@@ -103,6 +105,10 @@ public struct FixationDetector: Sendable {
                         update.ended = c.fixation
                         candidate = Candidate(point: point, time: time, displayID: displayID, confidence: confidence)
                     }
+                } else if point.distance(to: c.centroid)
+                            > configuration.maximumDispersionDegrees * configuration.pointsPerDegree {
+                    update.ended = c.fixation
+                    candidate = Candidate(point: point, time: time, displayID: displayID, confidence: confidence)
                 } else {
                     c.add(point, time, confidence)
                     candidate = c

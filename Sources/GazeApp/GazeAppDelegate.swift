@@ -17,6 +17,7 @@ final class GazeAppDelegate: NSObject, NSApplicationDelegate {
     private var statusMenu: StatusMenuController?
     private var permissionsWindow: PermissionsWindowController?
     private var calibrationWindow: CalibrationWindowController?
+    private var implicitMonitor: ImplicitCalibrationMonitor?
     private var demo: OverlayDemo?
 
     init(options: LaunchOptions) {
@@ -48,6 +49,12 @@ final class GazeAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         demo?.stop()
+        implicitMonitor?.stop()
+        if let agent, options.gazeMode == .camera {
+            agent.gazeEngine.flushImplicitRefit()
+            CalibrationPersistence.save(agent.gazeEngine)
+            (agent.calibrator as? VisionGazeSource)?.diagnostics().writeIgnoringErrors()
+        }
         agent?.overlay.tearDown()
     }
 
@@ -59,14 +66,55 @@ final class GazeAppDelegate: NSObject, NSApplicationDelegate {
     var isDemoRunning: Bool { demo != nil }
     var gazeMode: GazeInputMode { options.gazeMode }
 
+    /// 메뉴에 보여 줄 시선 상태(추정기, 보정 정확도, 클릭 보정 수).
+    var gazeStatusLines: [String] {
+        guard options.gazeMode == .camera, let agent, let calibrator = agent.calibrator else { return [] }
+        var lines = [calibrator.estimatorStatus.summary]
+        if let model = agent.gazeEngine.calibrationModels.first {
+            let ppcm = model.display.pointsPerCentimeter
+            var text: String
+            if let validation = model.validation {
+                text = validation.meanErrorCm.map { String(format: "보정 정확도: 평균 %.1fcm", $0) }
+                    ?? String(format: "보정 정확도: 평균 %.0fpt", validation.meanError)
+            } else {
+                text = ppcm.map { String(format: "보정 오차(교차 검증): %.1fcm", model.crossValidatedRMSE / $0) }
+                    ?? String(format: "보정 오차(교차 검증): %.0fpt", model.crossValidatedRMSE)
+            }
+            if model.implicitCount > 0 { text += " · 클릭 보정 \(model.implicitCount)회" }
+            lines.append(text)
+        } else {
+            lines.append("보정 필요 — ‘시선 보정 시작…’")
+        }
+        return lines
+    }
+
     func startAgent() {
         guard let agent, agent.coordinator.mode == .stopped else { return }
         Task {
             await agent.coordinator.start()
             refreshMenu()
             guard options.gazeMode == .camera else { return }
-            // 소스가 디스플레이 배치를 읽은 뒤에 저장해 둔 보정을 복원한다. 없으면 보정부터 한다.
-            let restored = CalibrationPersistence.restore(into: agent.gazeEngine)
+            let engine = agent.gazeEngine
+            let vision = agent.calibrator as? VisionGazeSource
+            // 보정이 바뀌면(명시 보정·검증·클릭 재적합) 저장하고 진단 파일을 갱신한다.
+            engine.setCalibrationObserver { event in
+                Task { @MainActor in
+                    if case .restored = event { return }
+                    CalibrationPersistence.save(engine)
+                    vision?.writeDiagnostics()
+                }
+            }
+            // 소스가 추정기·디스플레이 배치를 정한 뒤에 같은 추정기로 만든 보정을 복원한다. 없으면 보정부터 한다.
+            let restored = CalibrationPersistence.restore(into: engine)
+            if implicitMonitor == nil {
+                let monitor = ImplicitCalibrationMonitor(engine: engine) { [weak self] in
+                    self?.mode == .running && self?.calibrationWindow == nil
+                }
+                monitor.start()
+                implicitMonitor = monitor
+            }
+            vision?.writeDiagnostics()
+            refreshMenu()
             if restored == 0, calibrationWindow == nil, PermissionsModel.state(of: .camera) == .granted {
                 startCalibration()
             }
@@ -121,10 +169,14 @@ final class GazeAppDelegate: NSObject, NSApplicationDelegate {
         let engine = agent.gazeEngine
         let controller = CalibrationWindowController(
             calibrator: calibrator,
-            onCalibrated: { CalibrationPersistence.save(engine.calibrationModels) },
+            onCalibrated: { [weak self] in
+                CalibrationPersistence.save(engine)
+                self?.refreshMenu()
+            },
             onFinish: { [weak self] in
                 self?.agent?.overlay.setVisible(true)
                 self?.calibrationWindow = nil
+                self?.refreshMenu()
             })
         calibrationWindow = controller
         controller.present()
@@ -161,18 +213,17 @@ final class GazeAppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-/// 보정 모델을 ~/Library/Application Support/Gaze/calibration.json에 저장·복원한다.
-/// 디스플레이 배치가 바뀌었으면 복원하지 않는다(시선 엔진이 거부).
+/// 보정을 ~/Library/Application Support/Gaze/calibration-v2.json에 저장·복원한다
+/// (추정기 ID, 모델, 보정·검증 표본, 클릭 표본). 예전 calibration.json(landmarks-v1)은 읽기만 하고 지우지 않는다.
+/// 디스플레이 배치나 시선 추정기가 바뀌었으면 복원하지 않는다(시선 엔진이 거부).
 enum CalibrationPersistence {
-    static var fileURL: URL {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
-        return base.appendingPathComponent("Gaze/calibration.json")
-    }
-
-    static func save(_ models: [CalibrationModel]) {
-        guard !models.isEmpty, let data = try? JSONEncoder().encode(models) else { return }
-        let url = fileURL
+    static func save(_ engine: GazeEngine) {
+        let archive = engine.exportArchive()
+        guard !archive.models.isEmpty else { return }
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        guard let data = try? encoder.encode(archive) else { return }
+        let url = GazeStoragePaths.calibrationArchive
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try? data.write(to: url, options: .atomic)
     }
@@ -180,10 +231,22 @@ enum CalibrationPersistence {
     /// 설치한 모델 수.
     @discardableResult
     static func restore(into engine: GazeEngine) -> Int {
-        guard let data = try? Data(contentsOf: fileURL),
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        if let data = try? Data(contentsOf: GazeStoragePaths.calibrationArchive),
+           let archive = try? decoder.decode(CalibrationArchive.self, from: data) {
+            let installed = engine.importArchive(archive)
+            if installed > 0 { return installed }
+        }
+        // 예전 형식: 모델 배열(추정기 ID가 없으면 landmarks-v1). 현재 추정기와 같을 때만 설치된다.
+        guard let data = try? Data(contentsOf: GazeStoragePaths.legacyCalibration),
               let models = try? JSONDecoder().decode([CalibrationModel].self, from: data) else { return 0 }
         var installed = 0
         for model in models where (try? engine.install(model)) != nil { installed += 1 }
         return installed
     }
+}
+
+extension GazeDiagnostics {
+    func writeIgnoringErrors() { try? write() }
 }

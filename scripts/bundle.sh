@@ -6,6 +6,12 @@
 #   OUTPUT_DIR=/tmp scripts/bundle.sh # 다른 위치에 만들기
 #   CODESIGN_IDENTITY="Developer ID Application: ..." scripts/bundle.sh
 #                                     # 실제 인증서로 서명(hardened runtime + 카메라·마이크 entitlement)
+#   GAZE_MODEL=/path/GazeEstimator.mlpackage scripts/bundle.sh
+#                                     # 시선 CNN을 지정 경로에서 넣기(기본: ~/Library/Application Support/Gaze/Models)
+#
+# 시선 CNN(scripts/fetch-gaze-model.sh로 설치)이 있으면 Resources/GazeEstimator.mlpackage로 넣는다.
+# 앱은 처음 실행할 때 한 번 컴파일해 ~/Library/Application Support/Gaze/Models/Compiled에 캐시한다.
+# 모델이 없으면 랜드마크 추정기(정확도 낮음)로 동작하고 메뉴에 표시된다.
 #
 # 실행: open build/Gaze.app              (카메라 시선)
 #       open build/Gaze.app --args --mouse-gaze   (마우스를 시선으로)
@@ -56,6 +62,14 @@ cp "$BINARY" "$APP/Contents/MacOS/Gaze"
 for bundle in "$BIN_DIR"/*.bundle; do
     [[ -e "$bundle" ]] && cp -R "$bundle" "$APP/Contents/Resources/"
 done
+
+GAZE_MODEL="${GAZE_MODEL:-$HOME/Library/Application Support/Gaze/Models/GazeEstimator.mlpackage}"
+if [[ -d "$GAZE_MODEL" ]]; then
+    echo "==> 시선 CNN 포함: $GAZE_MODEL"
+    cp -R "$GAZE_MODEL" "$APP/Contents/Resources/GazeEstimator.mlpackage"
+else
+    echo "==> 시선 CNN 없음($GAZE_MODEL) — 랜드마크 추정기로 동작합니다. scripts/fetch-gaze-model.sh로 설치하세요."
+fi
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

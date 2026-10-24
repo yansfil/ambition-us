@@ -32,6 +32,24 @@ public struct DisplayGeometry: Sendable, Codable, Equatable {
         return displays.min { $0.distanceOutside(point) < $1.distanceOutside(point) }
     }
 
+    /// 물리 크기(mm). `CGDisplayScreenSize`가 모르면 nil.
+    public static func physicalSizeMillimeters(displayID: UInt32) -> CGSize? {
+        let size = CGDisplayScreenSize(displayID)
+        guard size.width > 1, size.height > 1 else { return nil }
+        return size
+    }
+
+    /// cm당 포인트(가로 기준). 물리 크기를 모르면 nil.
+    public static func pointsPerCentimeter(frame: CGRect, physicalMillimeters: CGSize?) -> Double? {
+        guard let mm = physicalMillimeters, mm.width > 1, frame.width > 0 else { return nil }
+        return Double(frame.width) / (Double(mm.width) / 10)
+    }
+
+    /// 이 디스플레이의 cm당 포인트.
+    public var pointsPerCentimeter: Double? {
+        Self.pointsPerCentimeter(frame: frame, physicalMillimeters: Self.physicalSizeMillimeters(displayID: id))
+    }
+
     /// 현재 활성 디스플레이 목록. `CGDisplayBounds`는 주 디스플레이 좌상단 원점 전역 좌표를 준다.
     public static func active() -> [DisplayGeometry] {
         var count: UInt32 = 0
