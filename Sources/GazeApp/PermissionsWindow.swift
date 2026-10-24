@@ -175,6 +175,16 @@ final class PermissionsModel {
     func openSettings(_ permission: AppPermission) {
         NSWorkspace.shared.open(permission.settingsURL)
     }
+
+    /// 화면 기록 등 프로세스 시작 시에만 반영되는 권한을 위해 같은 인자로 새로 띄우고 종료한다.
+    func relaunch() {
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.createsNewApplicationInstance = true
+        configuration.arguments = Array(CommandLine.arguments.dropFirst())
+        NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: configuration) { _, _ in
+            DispatchQueue.main.async { NSApp.terminate(nil) }
+        }
+    }
 }
 
 struct PermissionsView: View {
@@ -199,7 +209,7 @@ struct PermissionsView: View {
                               onOpenSettings: { model.openSettings(permission) })
             }
 
-            Text("`swift run`으로 실행하면 권한이 이 앱이 아니라 터미널에 붙습니다. scripts/bundle.sh로 만든 Gaze.app을 쓰세요. 화면 기록은 허용 후 앱을 다시 열어야 반영됩니다.")
+            Text("화면 기록은 허용한 뒤 앱을 다시 시작해야 반영됩니다. 설정에서 켜져 있는데도 허용 안 됨으로 나오면 예전 빌드의 허용이 남은 것이니, 목록에서 Gaze를 −로 지우고 다시 허용하세요. `swift run`으로 실행하면 권한이 터미널에 붙으니 scripts/bundle.sh로 만든 Gaze.app을 쓰세요.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -210,6 +220,7 @@ struct PermissionsView: View {
                         .disabled(model.states[.camera] != .granted)
                 }
                 Spacer()
+                Button("Gaze 다시 시작") { model.relaunch() }
                 Button(model.allRequiredGranted ? "Gaze 시작" : "필수 권한 없이 시작", action: onStart)
                     .keyboardShortcut(.defaultAction)
             }
