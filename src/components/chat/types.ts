@@ -20,6 +20,15 @@ export interface CatalogHit {
   rating: number;
   features: string;
   reviews: string[];
+  stock: '품절' | '얼마 안 남음' | '여유';
+  stockLeft?: number; // 얼마 안 남음일 때 남은 수량
+  listPrice?: number;
+  discountPct?: number;
+  arrival: string; // "내일 도착" | "5일 뒤 도착"
+  tags: string[];
+  options?: string; // "향: 화이트 머스크 / 블랙체리 / 피오니"
+  giftWrap?: boolean;
+  similar?: string[];
 }
 
 export interface SearchCatalogOutput {
@@ -34,7 +43,9 @@ export interface ShowProductsOutput {
   note?: string;
 }
 
-export type AddToCartOutput = { ok: true; product: Product; alreadyInCart?: boolean } | { ok: false; error: string };
+export type AddToCartOutput =
+  | { ok: true; product: Product; alreadyInCart?: boolean; option?: string }
+  | { ok: false; error: string; reason?: 'not_found' | 'out_of_stock'; product?: Product; alternatives?: CatalogHit[] };
 
 export type CheckoutOutput =
   | {
@@ -50,7 +61,7 @@ export type CheckoutOutput =
 
 export type ChatTools = {
   search_catalog: {
-    input: { query?: string; category?: string; maxPrice?: number };
+    input: { query?: string; category?: string; maxPrice?: number; tag?: string; inStockOnly?: boolean };
     output: SearchCatalogOutput;
   };
   show_products: {
@@ -58,7 +69,7 @@ export type ChatTools = {
     output: ShowProductsOutput;
   };
   add_to_cart: {
-    input: { productId: string };
+    input: { productId: string; option?: string };
     output: AddToCartOutput;
   };
   checkout: {

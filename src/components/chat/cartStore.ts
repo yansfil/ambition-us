@@ -27,6 +27,10 @@ export const useCart = create<CartState>((set, get) => ({
   order: null,
   sendBridge: null,
   add: (p, via) => {
+    if (p.stock <= 0) {
+      log.warn('chat', '카트: 품절 상품 담기 차단', { id: p.id, name: p.name, via });
+      return false;
+    }
     if (get().items.some((x) => x.id === p.id)) {
       log.debug('chat', '카트: 이미 담긴 상품', { id: p.id, via });
       return false;

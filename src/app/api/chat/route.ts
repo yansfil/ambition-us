@@ -11,7 +11,7 @@ import {
   tool,
 } from 'ai';
 import { z } from 'zod';
-import { BUDGET, categories, findProduct, products } from '@/catalog/products';
+import { BUDGET, categories, discountPct, findProduct, products, stockState, tags } from '@/catalog/products';
 import type { Product } from '@/catalog/types';
 import { slog } from '@/lib/log-server';
 import { agentModel, CACHE } from './config';
@@ -40,6 +40,13 @@ const SYSTEM_PROMPT = `너는 온라인 선물가게 "선물가게"의 쇼핑 �
 - 상품은 반드시 search_catalog로 찾는다. 카탈로그에 없는 상품, 가격, 리뷰, 정책을 지어내지 않는다.
 - 카테고리: ${categories.join(', ')}.
 - 가격은 "32,000원"처럼 쓴다.
+- 쓰임새 태그: ${tags.join(', ')}. 사용자가 생일·감사·회사 동료처럼 쓰임새를 말하면 search_catalog의 tag로 찾는다. 사용자가 미션과 다른 목적이나 예산을 말하면 그 말을 따른다.
+
+[재고·할인·배송·옵션]
+- search_catalog 결과에서 stock이 "품절"인 상품은 추천하지 않는다. 사용자가 그 상품을 콕 집어 묻거나 담으려 하면 품절이라고 짧게 말하고, 재고 있는 비슷한 상품(similar 또는 add_to_cart의 alternatives) 1~2개를 권한다.
+- "얼마 안 남음", 할인, 도착 일정(특히 4일 이상 걸리는 것)은 비교나 결정에 도움이 될 때만 짧게 덧붙인다. 첫 추천 문단에서도 한 상품에 한 마디를 넘기지 않는다.
+- options가 있는 상품을 담겠다고 하면, 옵션을 아직 안 정했을 때 어떤 옵션으로 할지 먼저 한 번 묻는다. 정하면 add_to_cart의 option에 "향: 라벤더"처럼 넣는다.
+- add_to_cart가 reason "out_of_stock"으로 실패하면 담지 못했다고 말하고 alternatives에서 대안을 권한다.
 
 [추천하는 방식]
 - 옵션을 제시할 때는 성격이 뚜렷이 다른 3개를 고른다. 장점과 단점이 서로 분명히 갈리게 고른다(예: 분위기용 / 오래 남는 것 / 매일 쓰는 것). 예산 안에서 고르되, 하나는 예산을 거의 다 쓰는 선택이어도 좋다.
@@ -77,6 +84,9 @@ function cartNote(cart: Product[], total: number) {
   return `현재 장바구니: ${line}`;
 }
 
+const arrival = (d: number) => (d <= 1 ? '내일 도착' : `${d}일 뒤 도착`);
+const STOCK_LABEL = { out: '품절', low: '얼마 안 남음', ok: '여유' } as const;
+
 const hit = (p: Product): CatalogHit => ({
   id: p.id,
   name: p.name,
@@ -86,26 +96,62 @@ const hit = (p: Product): CatalogHit => ({
   rating: p.rating,
   features: p.features.join(' · '),
   reviews: p.reviews,
+  stock: STOCK_LABEL[stockState(p)],
+  stockLeft: stockState(p) === 'low' ? p.stock : undefined,
+  listPrice: p.listPrice,
+  discountPct: discountPct(p) || undefined,
+  arrival: arrival(p.shipDays),
+  tags: p.tags,
+  options: p.options?.map((o) => `${o.name}: ${o.values.join(' / ')}`).join(', '),
+  giftWrap: p.giftWrap,
+  similar: p.similar,
 });
 
-function search({ query, category, maxPrice }: { query?: string; category?: string; maxPrice?: number }): SearchCatalogOutput {
-  let pool = products;
+/** 품절 상품의 대안: 재고 있는 similar 우선, 없으면 같은 카테고리에서 가격이 가까운 순 */
+function alternativesFor(p: Product): CatalogHit[] {
+  const inStock = (x: Product | undefined): x is Product => !!x && x.stock > 0 && x.id !== p.id;
+  const sim = (p.similar ?? []).map(findProduct).filter(inStock);
+  const rest = products
+    .filter((x) => inStock(x) && x.category === p.category && !sim.includes(x))
+    .sort((a, b) => Math.abs(a.price - p.price) - Math.abs(b.price - p.price));
+  return [...sim, ...rest].slice(0, 3).map(hit);
+}
+
+type SearchInput = { query?: string; category?: string; maxPrice?: number; tag?: string; inStockOnly?: boolean };
+
+function search({ query, category, maxPrice, tag, inStockOnly }: SearchInput): SearchCatalogOutput {
+  // 재고 있는 상품이 앞에 오게 정렬(품절은 맨 뒤)
+  let pool = [...products].sort((a, b) => Number(a.stock <= 0) - Number(b.stock <= 0));
   if (category) pool = pool.filter((p) => p.category.includes(category) || category.includes(p.category));
   if (maxPrice) pool = pool.filter((p) => p.price <= maxPrice);
+  if (tag) pool = pool.filter((p) => p.tags.some((t) => t.includes(tag) || tag.includes(t)));
+
   const tokens = (query ?? '').split(/[\s,·]+/).map((s) => s.trim()).filter((s) => s.length >= 2);
-  if (!tokens.length) return { count: pool.length, items: pool.map(hit) };
-  const scored = pool
-    .map((p) => {
-      const hay = [p.name, p.category, ...p.features, p.tradeoff.pro, p.tradeoff.con].join(' ');
-      return { p, score: tokens.filter((t) => hay.includes(t)).length };
-    })
-    .filter((x) => x.score > 0)
-    .sort((a, b) => b.score - a.score);
-  if (!scored.length) {
+  let matched = pool;
+  let note: string | undefined;
+  if (tokens.length) {
+    const scored = pool
+      .map((p) => {
+        const hay = [p.name, p.category, ...p.features, p.tradeoff.pro, p.tradeoff.con, ...p.tags].join(' ');
+        return { p, score: tokens.filter((t) => hay.includes(t)).length };
+      })
+      .filter((x) => x.score > 0)
+      .sort((a, b) => b.score - a.score);
+    if (scored.length) matched = scored.map((x) => x.p);
     // 검색어가 하나도 안 맞으면 필터만 적용한 전체를 돌려준다(모델이 빈손으로 지어내지 않게).
-    return { count: pool.length, items: pool.map(hit), note: '검색어와 정확히 맞는 상품이 없어 조건에 맞는 전체 목록을 보냅니다.' };
+    else note = '검색어와 정확히 맞는 상품이 없어 조건에 맞는 전체 목록을 보냅니다.';
   }
-  return { count: scored.length, items: scored.map((x) => x.p).map(hit) };
+
+  // 품절 제외는 마지막에 하고, 빠진 품절 상품은 note로 알린다(있는 상품을 "없다"고 말하지 않게)
+  if (inStockOnly) {
+    const hidden = matched.filter((p) => p.stock <= 0);
+    matched = matched.filter((p) => p.stock > 0);
+    if (hidden.length && tokens.length) {
+      const names = hidden.slice(0, 5).map((p) => `${p.name}(${p.id})`).join(', ');
+      note = [note, `품절이라 결과에서 뺀 상품: ${names}. 이 상품은 카탈로그에 있지만 지금 품절이다.`].filter(Boolean).join(' ');
+    }
+  }
+  return { count: matched.length, items: matched.map(hit), note };
 }
 
 const orderId = () => {
@@ -180,20 +226,27 @@ export async function POST(req: Request) {
   // 카트 정규화: 중복 제거, 카탈로그에 없는 id는 버림. 합계는 여기서 한 번만 계산
   const cartSet = new Set<string>();
   const unknownIds: string[] = [];
+  const soldOutIds: string[] = [];
   for (const id of env.data.cart ?? []) {
-    if (findProduct(id)) cartSet.add(id);
-    else unknownIds.push(id);
+    const p = findProduct(id);
+    if (!p) unknownIds.push(id);
+    else if (p.stock <= 0) soldOutIds.push(id);
+    else cartSet.add(id);
   }
+  if (soldOutIds.length) slog.warn('chat', '카트에 품절 상품이 있어 버림', { soldOutIds });
   if (unknownIds.length) slog.warn('chat', '카트에 카탈로그에 없는 id가 있어 버림', { unknownIds });
   const cart = Array.from(cartSet, (id) => findProduct(id)!);
   const cartTotal = cart.reduce((sum, p) => sum + p.price, 0);
   const tools = {
     search_catalog: tool({
-      description: '선물가게 카탈로그를 검색한다. 결과는 id, 이름, 가격, 카테고리, 트레이드오프(장점 / 단점), 평점 목록이다.',
+      description:
+        '선물가게 카탈로그를 검색한다. 결과는 id, 이름, 가격, 카테고리, 트레이드오프(장점 / 단점), 평점, 리뷰, 재고 상태, 할인율, 도착 일정, 쓰임새 태그, 옵션, 비슷한 상품 id 목록이다. 재고 있는 상품이 앞에 온다.',
       inputSchema: z.object({
         query: z.string().optional().describe('검색어. 예: "향", "커피", "식물"'),
         category: z.string().optional().describe(`카테고리: ${categories.join(', ')}`),
         maxPrice: z.number().optional().describe('최대 가격(원)'),
+        tag: z.string().optional().describe(`쓰임새 태그: ${tags.join(', ')}`),
+        inStockOnly: z.boolean().optional().describe('true면 품절 상품을 뺀다(빠진 품절 상품은 note로 알려 준다). 사용자가 특정 상품을 콕 집어 물을 때는 쓰지 않는다'),
       }),
       execute: async (input): Promise<SearchCatalogOutput> => {
         const out = search(input);
@@ -216,18 +269,26 @@ export async function POST(req: Request) {
       },
     }),
     add_to_cart: tool({
-      description: '상품을 장바구니에 담는다.',
-      inputSchema: z.object({ productId: z.string().describe('상품 id') }),
-      execute: async ({ productId }): Promise<AddToCartOutput> => {
+      description: '상품을 장바구니에 담는다. 품절이면 실패하고 재고 있는 대안(alternatives)을 돌려준다.',
+      inputSchema: z.object({
+        productId: z.string().describe('상품 id'),
+        option: z.string().max(80).optional().describe('고른 옵션. 예: "향: 라벤더"'),
+      }),
+      execute: async ({ productId, option }): Promise<AddToCartOutput> => {
         const p = findProduct(productId);
         if (!p) {
           slog.warn('tool', 'add_to_cart: 없는 상품', { productId });
-          return { ok: false, error: `없는 상품 id: ${productId}` };
+          return { ok: false, reason: 'not_found', error: `없는 상품 id: ${productId}` };
+        }
+        if (p.stock <= 0) {
+          const alternatives = alternativesFor(p);
+          slog.info('tool', 'add_to_cart: 품절이라 거절', { productId, name: p.name, alternatives: alternatives.map((a) => a.id) });
+          return { ok: false, reason: 'out_of_stock', error: `${p.name}은(는) 품절이에요.`, product: p, alternatives };
         }
         const alreadyInCart = cartSet.has(p.id) || addedThisTurn.has(p.id);
         addedThisTurn.add(p.id);
-        slog.info('tool', 'add_to_cart', { productId, name: p.name, price: p.price, alreadyInCart });
-        return { ok: true, product: p, alreadyInCart };
+        slog.info('tool', 'add_to_cart', { productId, name: p.name, price: p.price, alreadyInCart, option });
+        return { ok: true, product: p, alreadyInCart, option };
       },
     }),
     checkout: tool({

@@ -65,11 +65,12 @@ function PartView({ part, streaming, onAdd }: { part: Part; streaming: boolean; 
 
     case 'tool-add_to_cart':
       if (part.state === 'output-available') {
-        return part.output.ok ? (
-          <StatusLine text={t.chat.addedToCart(part.output.product.name)} tone="ok" />
-        ) : (
-          <StatusLine text={part.output.error} tone="error" />
-        );
+        const o = part.output;
+        if (o.ok) {
+          return <StatusLine text={o.option ? t.chat.addedWithOption(o.product.name, o.option) : t.chat.addedToCart(o.product.name)} tone="ok" />;
+        }
+        if (o.reason === 'out_of_stock' && o.product) return <StatusLine text={t.chat.outOfStock(o.product.name)} tone="error" />;
+        return <StatusLine text={o.error} tone="error" />;
       }
       if (part.state === 'output-error') return <StatusLine text={t.chat.toolFailed} tone="error" />;
       return <StatusLine text={t.chat.addingToCart} busy />;
