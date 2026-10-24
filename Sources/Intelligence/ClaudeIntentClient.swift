@@ -7,8 +7,8 @@ public struct ClaudeClientConfiguration: Sendable, Equatable {
     public var endpoint: URL
     public var model: String
     public var anthropicVersion: String
-    /// 지연 시간을 줄이려고 low. Claude Opus 5.5는 thinking을 끌 수 없으므로(disabled/budget_tokens는 400) effort로만 조절한다.
-    public var effort: String
+    /// effort를 지원하는 모델에서만 지정한다. Haiku 4.5는 effort를 받지 않으므로(400) 기본값은 nil이다.
+    public var effort: String?
     /// thinking 토큰도 포함되는 상한. 출력 자체는 짧은 JSON이다.
     public var maxTokens: Int
     /// 전체 호출 시간 제한(초).
@@ -18,12 +18,12 @@ public struct ClaudeClientConfiguration: Sendable, Equatable {
     public var refusalFallback: Bool
 
     public init(endpoint: URL = URL(string: "https://api.anthropic.com/v1/messages")!,
-                model: String = "claude-opus-5-5",
+                model: String = "claude-haiku-4-5-20251001",
                 anthropicVersion: String = "2023-06-01",
-                effort: String = "low",
+                effort: String? = nil,
                 maxTokens: Int = 2048,
                 timeout: TimeInterval = 4,
-                refusalFallback: Bool = true) {
+                refusalFallback: Bool = false) {
         self.endpoint = endpoint; self.model = model; self.anthropicVersion = anthropicVersion; self.effort = effort
         self.maxTokens = maxTokens; self.timeout = timeout; self.refusalFallback = refusalFallback
     }
@@ -146,11 +146,12 @@ public actor ClaudeIntentClient: IntentModelClient {
             "max_tokens": .integer(configuration.maxTokens),
             "system": .string(ClaudePrompt.system),
             "messages": [["role": "user", "content": .string(ClaudePrompt.userMessage(for: request))]],
-            "output_config": [
-                "effort": .string(configuration.effort),
-                "format": ["type": "json_schema", "schema": IntentDecisionSchema.schema],
-            ],
         ]
+        var outputConfig: [String: JSONValue] = ["format": ["type": "json_schema", "schema": IntentDecisionSchema.schema]]
+        if let effort = configuration.effort {
+            outputConfig["effort"] = .string(effort)
+        }
+        body["output_config"] = .object(outputConfig)
         if configuration.refusalFallback {
             body["fallbacks"] = "default"
         }
