@@ -123,7 +123,7 @@ function search({ query, category, maxPrice, tag, inStockOnly }: SearchInput): S
   // 재고 있는 상품이 앞에 오게 정렬(품절은 맨 뒤)
   let pool = [...products].sort((a, b) => Number(a.stock <= 0) - Number(b.stock <= 0));
   if (category) pool = pool.filter((p) => p.category.includes(category) || category.includes(p.category));
-  if (maxPrice) pool = pool.filter((p) => p.price <= maxPrice);
+  if (maxPrice !== undefined) pool = pool.filter((p) => p.price <= maxPrice);
   if (tag) pool = pool.filter((p) => p.tags.some((t) => t.includes(tag) || tag.includes(t)));
 
   const tokens = (query ?? '').split(/[\s,·]+/).map((s) => s.trim()).filter((s) => s.length >= 2);
@@ -284,6 +284,20 @@ export async function POST(req: Request) {
           const alternatives = alternativesFor(p);
           slog.info('tool', 'add_to_cart: 품절이라 거절', { productId, name: p.name, alternatives: alternatives.map((a) => a.id) });
           return { ok: false, reason: 'out_of_stock', error: `${p.name}은(는) 품절이에요.`, product: p, alternatives };
+        }
+        // 옵션 검증: 상품에 옵션이 있으면 고른 값이 실제 옵션 값 중 하나를 포함해야 한다
+        const picked = option;
+        if (picked && p.options?.length) {
+          const valid = p.options.some((o) => o.values.some((v) => picked.includes(v)));
+          if (!valid) {
+            const choices = p.options.map((o) => `${o.name}: ${o.values.join('/')}`).join(', ');
+            slog.warn('tool', 'add_to_cart: 없는 옵션', { productId, option, choices });
+            return { ok: false, reason: 'invalid_option', error: `${p.name}에는 그 옵션이 없어요. 고를 수 있는 옵션: ${choices}`, product: p };
+          }
+        }
+        if (option && !p.options?.length) {
+          slog.warn('tool', 'add_to_cart: 옵션 없는 상품에 옵션 → 무시', { productId, option });
+          option = undefined;
         }
         const alreadyInCart = cartSet.has(p.id) || addedThisTurn.has(p.id);
         addedThisTurn.add(p.id);

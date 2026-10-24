@@ -45,7 +45,7 @@ export interface ShowProductsOutput {
 
 export type AddToCartOutput =
   | { ok: true; product: Product; alreadyInCart?: boolean; option?: string }
-  | { ok: false; error: string; reason?: 'not_found' | 'out_of_stock'; product?: Product; alternatives?: CatalogHit[] };
+  | { ok: false; error: string; reason?: 'not_found' | 'out_of_stock' | 'invalid_option'; product?: Product; alternatives?: CatalogHit[] };
 
 export type CheckoutOutput =
   | {
