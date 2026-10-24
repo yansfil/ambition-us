@@ -1,0 +1,470 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>poin 시안 보드</title>
+<style>
+:root{
+  --sunset: radial-gradient(125% 125% at 50% 101%, rgba(245,87,2,1) 10.5%, rgba(245,120,2,1) 16%, rgba(245,140,2,1) 17.5%, rgba(245,170,100,1) 25%, rgba(238,174,202,1) 40%, rgba(202,179,214,1) 65%, rgba(148,201,233,1) 100%);
+  --text:#18181B; --muted:#5B5560; --faint:rgba(24,24,27,.42);
+  --pill:#1A1A1A;
+  --glass-light: rgba(255,255,255,.62);
+  --glass-dark: rgba(20,20,22,.66);
+  --on-dark:#F5F5F5; --on-dark-muted:rgba(245,245,245,.55); --hair-dark:rgba(255,255,255,.09);
+  --heat: linear-gradient(90deg,#F55702 0%,#F58C02 35%,#F5AA64 60%,#EEAECA 100%);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#EDE9EF;font-family:-apple-system,"SF Pro Text","Apple SD Gothic Neo",system-ui,sans-serif;color:var(--text);padding:56px;width:2720px;-webkit-font-smoothing:antialiased;font-feature-settings:"tnum"}
+.board-head{display:flex;align-items:baseline;gap:20px;margin-bottom:32px}
+.board-head h1{font-size:34px;font-weight:650;letter-spacing:-.025em}
+.board-head p{font-size:17px;color:#6B6470}
+.grid{display:grid;grid-template-columns:1280px 1280px;gap:56px 48px}
+.cap{font-size:19px;font-weight:600;margin-bottom:14px;display:flex;gap:12px;align-items:center;letter-spacing:-.01em}
+.cap .n{font-size:13px;font-weight:600;background:var(--pill);color:#fff;padding:3px 9px;border-radius:99px}
+.cap .d{font-weight:400;color:#6B6470;font-size:15px}
+
+/* ---------- 앱 프레임 ---------- */
+.app{position:relative;width:1280px;height:800px;background:var(--sunset);border-radius:22px;overflow:hidden;box-shadow:0 30px 60px -30px rgba(60,20,40,.35)}
+.brand{position:absolute;left:304px;top:22px;font-size:15px;font-weight:650;letter-spacing:-.01em;color:var(--text)}
+.brand small{font-weight:500;color:var(--muted);margin-left:7px;font-size:13px}
+.tr-ctrl{position:absolute;right:20px;top:16px;display:flex;gap:8px;z-index:25}
+.gp{display:flex;align-items:center;gap:8px;height:34px;padding:0 13px;border-radius:99px;background:var(--glass-light);backdrop-filter:blur(18px) saturate(1.4);border:1px solid rgba(255,255,255,.7);font-size:13px;font-weight:500;color:var(--text)}
+.gp b{min-width:18px;height:18px;border-radius:99px;background:var(--pill);color:#fff;font-size:11px;display:grid;place-items:center;font-weight:600}
+.sw{width:26px;height:16px;border-radius:99px;background:rgba(24,24,27,.18);position:relative}
+.sw::after{content:"";position:absolute;left:2px;top:2px;width:12px;height:12px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+.sw.on{background:var(--pill)} .sw.on::after{left:12px}
+.gp.cam{background:var(--glass-dark);color:var(--on-dark);border-color:var(--hair-dark)}
+.gp.cam i{width:7px;height:7px;border-radius:50%;background:#FF453A;box-shadow:0 0 0 3px rgba(255,69,58,.25)}
+.gp.cam span{color:var(--on-dark-muted);font-weight:400}
+
+.col{position:absolute;left:300px;width:680px;top:60px;bottom:0;display:flex;flex-direction:column}
+.mission{background:var(--glass-light);backdrop-filter:blur(18px) saturate(1.4);border:1px solid rgba(255,255,255,.75);border-radius:22px;padding:16px 20px}
+.mission .k{font-size:12px;font-weight:500;color:var(--muted);display:flex;justify-content:space-between}
+.mission .t{font-size:18px;font-weight:650;letter-spacing:-.015em;margin-top:5px}
+.mission .s{font-size:13px;color:var(--muted);margin-top:5px}
+.mission.min{align-self:center;padding:7px 14px;border-radius:99px;font-size:13px;display:flex;gap:8px;align-items:center}
+.mission.min b{font-weight:600}
+.mission.min span{color:var(--muted)}
+.chat{flex:1;padding:18px 0;display:flex;flex-direction:column;gap:14px;overflow:hidden}
+.msg{font-size:15px;line-height:1.62;max-width:580px;letter-spacing:-.005em}
+.msg.user{align-self:flex-end;background:var(--pill);color:#fff;padding:10px 16px;border-radius:20px 20px 6px 20px}
+
+/* 히어로(첫 화면): 레퍼런스처럼 입력창이 화면 중앙 */
+.hero{position:absolute;left:300px;width:680px;top:0;bottom:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px}
+.hero h2{font-size:30px;font-weight:650;letter-spacing:-.03em}
+.hero .mission{width:520px} .hero .mission.min{width:auto}
+
+/* 어두운 알약 입력창 */
+.input{position:relative;height:60px;border-radius:99px;background:var(--pill);display:flex;align-items:center;padding:0 64px 0 26px;font-size:16px;font-weight:500;color:#fff;box-shadow:0 18px 40px -18px rgba(40,10,0,.55);white-space:nowrap;overflow:hidden}
+.input .ph{color:rgba(255,255,255,.46)}
+.input.focus{box-shadow:0 0 0 4px rgba(255,255,255,.28),0 18px 40px -18px rgba(40,10,0,.55)}
+.input .btn{position:absolute;right:9px;top:9px;width:42px;height:42px;border-radius:50%;background:#F2F2F2;display:grid;place-items:center;color:#1A1A1A}
+.hero .input{width:560px}
+.col .input{margin-bottom:22px}
+.caret{display:inline-block;width:1.5px;height:19px;background:#fff;vertical-align:-3px;margin-left:1px}
+
+/* 상품 카드: 단단한 흰 카드 */
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.card{background:#fff;border-radius:22px;overflow:hidden;position:relative;box-shadow:0 1px 0 rgba(0,0,0,.03),0 14px 30px -18px rgba(70,20,40,.35)}
+.card .img{height:96px;display:grid;place-items:center;font-size:40px}
+.card .b{padding:12px 14px 14px}
+.card .nm{font-size:14px;font-weight:600;letter-spacing:-.01em}
+.card .pr{font-size:14px;margin-top:2px;color:var(--muted)}
+.card .tr{font-size:12px;color:var(--muted);margin-top:7px;line-height:1.5}
+.card .tr em{font-style:normal;color:#C2410C}
+.card .rv{font-size:12px;color:var(--faint);margin-top:5px}
+.card .add{margin-top:11px;font-size:13px;font-weight:600;border-radius:99px;text-align:center;padding:8px 0;background:#F3F1F2}
+.card.hover{transform:translateY(-2px);box-shadow:0 22px 40px -18px rgba(70,20,40,.45)}
+.card .add.hover{background:var(--pill);color:#fff}
+
+/* ---------- poin 레이어: 어두운 유리 + 노을빛 오브 ---------- */
+.orb{width:10px;height:10px;border-radius:50%;flex:none;background:radial-gradient(circle at 35% 30%,#FFE2C4 0%,#F58C02 45%,#F55702 100%);box-shadow:0 0 10px 2px rgba(245,110,2,.65)}
+.glass{background:linear-gradient(var(--glass-dark),var(--glass-dark)) padding-box,linear-gradient(130deg,rgba(245,120,2,.9),rgba(238,174,202,.55) 45%,rgba(148,201,233,.35)) border-box;border:1px solid transparent;backdrop-filter:blur(22px) saturate(1.5);color:var(--on-dark)}
+.chip{position:absolute;z-index:20;width:340px;border-radius:20px;padding:13px 15px 0;box-shadow:0 26px 50px -16px rgba(90,25,0,.5);overflow:hidden}
+.chip .why{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--on-dark-muted)}
+.chip .why b{color:var(--on-dark);font-weight:600}
+.chip .q{font-size:16px;font-weight:600;letter-spacing:-.015em;margin:8px 0 11px;line-height:1.38}
+.chip .keys{display:flex;gap:14px;font-size:12px;color:var(--on-dark-muted);padding-bottom:12px;align-items:center}
+kbd{font-family:inherit;font-size:11px;font-weight:600;background:rgba(255,255,255,.12);color:var(--on-dark);border-radius:7px;padding:2px 7px;margin-right:5px}
+.chip .keys .sensehint{margin-left:auto;white-space:nowrap;font-size:11.5px;color:#F5AA64}
+.timer{height:2px;background:rgba(255,255,255,.08);margin:0 -15px}
+.timer i{display:block;height:100%;background:var(--heat);border-radius:2px}
+.mark{align-self:center;display:flex;align-items:center;gap:9px;font-size:12.5px;font-weight:500;border-radius:99px;padding:7px 14px 7px 11px}
+.mark span{color:var(--on-dark-muted);font-weight:400}
+.dwell{position:absolute;top:9px;right:9px;font-size:10.5px;font-weight:600;padding:3px 8px 3px 6px;border-radius:99px;display:flex;align-items:center;gap:5px}
+.dwell .orb{width:6px;height:6px}
+
+/* 로그 패널 */
+.panel{position:absolute;left:16px;top:16px;bottom:16px;width:270px;border-radius:24px;font-size:11.5px;display:flex;flex-direction:column;overflow:hidden;z-index:10;box-shadow:0 30px 60px -30px rgba(40,10,30,.6)}
+.ph2{display:flex;justify-content:space-between;align-items:center;padding:14px 16px 12px}
+.ph2 b{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600}
+.ph2 .tools{color:var(--on-dark-muted);display:flex;gap:10px;font-size:11px}
+.sec{padding:10px 16px;border-top:1px solid var(--hair-dark);display:flex;flex-direction:column;gap:8px}
+.lbl{font-size:10.5px;font-weight:500;color:var(--on-dark-muted);display:flex;justify-content:space-between}
+.g{display:grid;grid-template-columns:62px 1fr 56px;align-items:center;gap:9px;color:var(--on-dark-muted);white-space:nowrap}
+.g .bar{height:4px;background:rgba(255,255,255,.08);border-radius:99px;overflow:hidden}
+.g .bar i{display:block;height:100%;background:var(--heat);border-radius:99px}
+.g .v{color:var(--on-dark);text-align:right;font-weight:500}
+.g.txt{grid-template-columns:62px 1fr}
+.g.txt .v{text-align:left}
+.sense{display:grid;grid-template-columns:80px 1fr;gap:10px;align-items:center}
+.thumb{height:62px;border-radius:12px;background:linear-gradient(160deg,#4A3A44,#2B2530);position:relative;overflow:hidden}
+.thumb svg{position:absolute;inset:0}
+.sense .meta{display:flex;flex-direction:column;gap:5px;color:var(--on-dark-muted)}
+.sense .meta b{color:var(--on-dark);font-weight:500}
+.badge{display:inline-block;background:var(--heat);color:#1A1A1A;border-radius:99px;padding:1px 7px;font-weight:700;font-size:10.5px}
+.traces{padding:10px 12px 12px;display:flex;flex-direction:column;gap:8px;overflow:hidden;flex:1;border-top:1px solid var(--hair-dark)}
+.traces .lbl{padding:0 4px}
+.tc{background:rgba(255,255,255,.06);border-radius:16px;padding:11px 12px;display:flex;flex-direction:column;gap:7px}
+.tc .h{display:flex;justify-content:space-between;align-items:center;font-size:12px;font-weight:600}
+.tc .h span{color:var(--on-dark-muted);font-weight:400;font-size:11px}
+.st{display:grid;grid-template-columns:30px 1fr;gap:7px;line-height:1.5}
+.st .k{color:var(--on-dark-muted)}
+.st .v{color:rgba(245,245,245,.86)}
+.st .v em{font-style:normal;color:#F5AA64;font-weight:600}
+.conf{display:inline-block;width:54px;height:4px;background:rgba(255,255,255,.1);border-radius:99px;vertical-align:1px;margin-left:6px;position:relative}
+.conf i{position:absolute;left:0;top:0;bottom:0;background:var(--heat);border-radius:99px}
+.conf b{position:absolute;top:-2px;width:1.5px;height:8px;background:#fff;border-radius:1px}
+.tc.mini{padding:9px 12px;background:rgba(255,255,255,.035)}
+.tc.mini .h{font-weight:500;color:var(--on-dark-muted)}
+.ctrl{border-top:1px solid var(--hair-dark);padding:12px 16px 14px;display:flex;flex-direction:column;gap:9px;color:var(--on-dark-muted)}
+.sl{display:grid;grid-template-columns:62px 1fr 36px;align-items:center;gap:9px;white-space:nowrap}
+.sl .r{height:3px;background:rgba(255,255,255,.12);border-radius:99px;position:relative}
+.sl .r::before{content:"";position:absolute;left:0;top:0;bottom:0;width:var(--p);background:rgba(255,255,255,.5);border-radius:99px}
+.sl .r i{position:absolute;top:-5px;left:calc(var(--p) - 6px);width:13px;height:13px;border-radius:50%;background:#fff;box-shadow:0 2px 6px rgba(0,0,0,.4)}
+.sl .v{color:var(--on-dark);text-align:right;font-weight:500}
+.ctrlrow{display:flex;gap:5px;flex-wrap:wrap}
+.pill{border-radius:99px;padding:3px 9px;background:rgba(255,255,255,.06);font-size:11px}
+.pill.on{background:rgba(245,140,2,.18);color:#F5AA64}
+.empty-t{color:var(--on-dark-muted);line-height:1.65;padding:4px 4px 0}
+
+/* 커서 */
+.cursor{position:absolute;z-index:30;width:18px;height:24px;filter:drop-shadow(0 2px 3px rgba(0,0,0,.3))}
+.path{position:absolute;z-index:5;pointer-events:none}
+
+/* 비교표 */
+.cmp{background:#fff;border-radius:22px;overflow:hidden;font-size:13.5px;box-shadow:0 14px 30px -18px rgba(70,20,40,.35)}
+.cmp table{width:100%;border-collapse:collapse}
+.cmp th,.cmp td{padding:10px 16px;border-bottom:1px solid #F2EFF1;text-align:left}
+.cmp th{font-weight:600;color:var(--muted);font-size:12.5px}
+.cmp td:first-child{color:var(--muted)}
+.cmp tr:last-child td{border-bottom:none}
+.cmp .best{font-weight:650;color:var(--text)}
+
+/* 회고 */
+.veil{position:absolute;inset:0;background:rgba(40,15,30,.18);backdrop-filter:blur(14px);z-index:40}
+.retro{position:absolute;z-index:41;left:50%;top:50%;transform:translate(-50%,-50%);width:780px;border-radius:30px;padding:34px 36px 30px;box-shadow:0 40px 80px -30px rgba(60,10,0,.6)}
+.retro .k{font-size:12.5px;color:var(--on-dark-muted);display:flex;align-items:center;gap:9px}
+.retro h2{font-size:32px;font-weight:650;letter-spacing:-.03em;margin:14px 0 6px;line-height:1.3}
+.retro h2 em{font-style:normal;background:linear-gradient(90deg,#F58C02,#EEAECA);-webkit-background-clip:text;color:transparent}
+.retro .sub{color:var(--on-dark-muted);font-size:14px}
+.tl{margin:30px 0 10px;position:relative;display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.tl::before{content:"";position:absolute;left:6px;right:6px;top:6px;height:1px;background:rgba(255,255,255,.14)}
+.node{position:relative;padding-top:26px;font-size:13px;line-height:1.55;color:rgba(245,245,245,.86)}
+.node::before{content:"";position:absolute;left:0;top:0;width:13px;height:13px;border-radius:50%;background:#2A2A2E;border:1.5px solid rgba(255,255,255,.3)}
+.node.ok::before{background:radial-gradient(circle at 35% 30%,#FFE2C4,#F58C02 45%,#F55702);border:none;box-shadow:0 0 12px 2px rgba(245,110,2,.6)}
+.node.no::before{border-color:#F5F5F5;background:transparent}
+.node .tm{font-size:11px;color:var(--on-dark-muted)}
+.node .nm{font-weight:600;color:var(--on-dark);margin:2px 0}
+.node .rs{font-size:12px;color:var(--on-dark-muted);margin-top:2px}
+.node.ok .rs{color:#F5AA64}
+.legend{display:flex;gap:16px;font-size:11.5px;color:var(--on-dark-muted);margin-top:6px}
+.retro .acts{display:flex;gap:10px;margin-top:26px}
+.btn2{font-size:14px;font-weight:600;padding:11px 18px;border-radius:99px;background:rgba(255,255,255,.08);color:var(--on-dark)}
+.btn2.p{background:#F2F2F2;color:#1A1A1A}
+
+/* 커서 동반자: poin은 커서 오른쪽 아래에 늘 붙어 있다 */
+.comp{position:absolute;z-index:31;display:flex;align-items:center;gap:6px}
+.comp .orb{width:11px;height:11px}
+.comp .halo{position:absolute;left:-5px;top:-5px;width:21px;height:21px;border-radius:50%;border:1px solid rgba(245,120,2,.45)}
+.chip.anchored{border-top-left-radius:6px}
+/* 긴 텍스트 응답 */
+.longtext{font-size:14.5px;line-height:1.72;max-width:640px;color:#27232A}
+.longtext p{margin-bottom:9px}
+.sel{background:rgba(70,130,255,.28);border-radius:2px}
+.tag{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:600;padding:2px 8px 2px 6px;border-radius:99px;vertical-align:1px;margin-left:6px}
+.tag .orb{width:6px;height:6px}
+.chip .keys.multi{flex-wrap:wrap;row-gap:8px}
+.cards.compact .img{height:78px;font-size:34px}
+</style>
+</head>
+<body>
+
+<div class="board-head">
+  <h1>poin 데모 · 핵심 화면 시안 v3</h1>
+  <p>채팅은 노을 배경 위 흰 카드와 검은 알약 입력창 · poin은 커서 오른쪽 아래에 붙어 다니는 오브, 순간이 오면 그 자리에서 칩으로 커짐</p>
+</div>
+
+<div class="grid">
+
+<!-- ===================== 1. 첫 진입 ===================== -->
+<section>
+  <div class="cap"><span class="n">01</span>첫 진입<span class="d">입력창이 화면 중앙 · 미션 카드 펼침 · 로그 패널 기본 펼침</span></div>
+  <div class="app">
+    <div class="tr-ctrl"><div class="gp"><div class="sw"></div>감지 모드</div><div class="gp">장바구니 <b>0</b></div></div>
+
+    <div class="panel glass">
+      <div class="ph2"><b><span class="orb"></span>poin 로그</b><div class="tools"><span>일시정지</span><span>내보내기</span><span>` 접기</span></div></div>
+      <div class="sec">
+        <div class="g"><span>타이핑</span><div class="bar"><i style="width:0%"></i></div><span class="v">0 타/분</span></div>
+        <div class="g"><span>정지</span><div class="bar"><i style="width:0%"></i></div><span class="v">0.0초</span></div>
+        <div class="g"><span>포커스 대기</span><div class="bar"><i style="width:0%"></i></div><span class="v">0.0초</span></div>
+        <div class="g txt"><span>커서</span><span class="v">미션 카드</span></div>
+      </div>
+      <div class="traces">
+        <div class="lbl"><span>순간 트레이스</span><span>0 / 4</span></div>
+        <div class="empty-t">아직 포착된 순간이 없어요.<br>신호는 계속 모으고 있어요.</div>
+      </div>
+      <div class="ctrl">
+        <div class="sl"><span>확신도 임계</span><div class="r" style="--p:60%"><i></i></div><span class="v">0.60</span></div>
+        <div class="sl"><span>체류</span><div class="r" style="--p:30%"><i></i></div><span class="v">1.5초</span></div>
+        <div class="sl"><span>정지</span><div class="r" style="--p:45%"><i></i></div><span class="v">4.0초</span></div>
+        <div class="ctrlrow"><span class="pill on">언어</span><span class="pill on">반언어</span><span class="pill on">커서</span><span class="pill">카메라</span><span class="pill">쿨다운 초기화</span></div>
+      </div>
+    </div>
+
+    <div class="hero">
+      <div class="mission"><div class="k"><span>오늘의 미션</span><span>접기</span></div><div class="t">친구 집들이 선물을 8만 원 안에서 골라 보세요.</div><div class="s">에이전트와 대화하며 골라 장바구니에 담고 결제까지 해 보세요.</div></div>
+      <h2>무엇을 찾아 드릴까요?</h2>
+      <div class="input"><span class="ph">원하는 선물을 편하게 말씀해 주세요</span><div class="btn"><svg width="15" height="15" viewBox="0 0 14 14" fill="none"><rect x="5" y="1" width="4" height="7" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M2.75 6.5V7a4.25 4.25 0 0 0 8.5 0v-.5M7 11.25V13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></div></div>
+    </div>
+  <svg class="cursor" style="left:742px;top:590px" viewBox="0 0 18 24"><path d="M1 1 L1 19 L6 14.5 L9.5 22 L12.5 20.7 L9 13.5 L15.5 13.5 Z" fill="#111" stroke="#fff" stroke-width="1.2"/></svg><div class="comp" style="left:758px;top:610px"><span class="orb"></span></div>
+  </div>
+</section>
+
+<!-- ===================== 2. 순간 1 ===================== -->
+<section>
+  <div class="cap"><span class="n">02</span>순간 1 · 요구 모호<span class="d">썼다 지우기 반복 + 전송 전 긴 정지 → 커서 옆에서 칩으로 커짐</span></div>
+  <div class="app">
+    <div class="tr-ctrl"><div class="gp"><div class="sw"></div>감지 모드</div><div class="gp">장바구니 <b>0</b></div></div>
+
+    <div class="panel glass">
+      <div class="ph2"><b><span class="orb"></span>poin 로그</b><div class="tools"><span>일시정지</span><span>내보내기</span><span>` 접기</span></div></div>
+      <div class="sec">
+        <div class="g"><span>타이핑</span><div class="bar"><i style="width:22%"></i></div><span class="v">64 타/분</span></div>
+        <div class="g"><span>정지</span><div class="bar"><i style="width:82%"></i></div><span class="v">6.2초</span></div>
+        <div class="g"><span>삭제 버스트</span><div class="bar"><i style="width:60%"></i></div><span class="v">3회</span></div>
+        <div class="g txt"><span>커서</span><span class="v">입력창</span></div>
+      </div>
+      <div class="traces">
+        <div class="lbl"><span>순간 트레이스</span><span>1 / 4</span></div>
+        <div class="tc">
+          <div class="h">요구 모호<span>00:12</span></div>
+          <div class="st"><span class="k">신호</span><span class="v">초안 썼다 지움 3회 · 전송 전 정지 6.2초 · 지운 말 "인테리어 소품"</span></div>
+          <div class="st"><span class="k">순간</span><span class="v">삭제 반복 + 장시간 정지</span></div>
+          <div class="st"><span class="k">추론</span><span class="v">선물 기준이 아직 안 정해짐<br>확신도 <em>0.78</em><span class="conf"><i style="width:78%"></i><b style="left:60%"></b></span> · 640ms</span></div>
+          <div class="st"><span class="k">개입</span><span class="v"><em>표시함</em> · 커서 옆</span></div>
+          <div class="st"><span class="k">반응</span><span class="v">기다리는 중 · 5초 남음</span></div>
+        </div>
+      </div>
+      <div class="ctrl">
+        <div class="sl"><span>확신도 임계</span><div class="r" style="--p:60%"><i></i></div><span class="v">0.60</span></div>
+        <div class="ctrlrow"><span class="pill on">언어</span><span class="pill on">반언어</span><span class="pill on">커서</span><span class="pill">카메라</span><span class="pill">쿨다운 초기화</span></div>
+      </div>
+    </div>
+
+    <div class="hero">
+      <div class="mission min"><b>미션</b><span>친구 집들이 선물 · 8만 원 이하</span></div>
+      <h2>무엇을 찾아 드릴까요?</h2>
+            <div class="input focus">집들이 선물로 뭐가 좋<span class="caret"></span><div class="btn"><svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M7 12V2M7 2L2.5 6.5M7 2L11.5 6.5" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></div></div>
+    </div>
+
+    <svg class="cursor" style="left:640px;top:488px" viewBox="0 0 18 24"><path d="M1 1 L1 19 L6 14.5 L9.5 22 L12.5 20.7 L9 13.5 L15.5 13.5 Z" fill="#111" stroke="#fff" stroke-width="1.2"/></svg>
+    <div class="chip glass anchored" style="left:656px;top:508px">
+      <div class="why"><span class="orb"></span><b>poin</b>보내기 전에 잠시 멈추셨어요</div>
+      <div class="q">먼저 두 가지만 짧게 여쭤볼까요?</div>
+      <div class="keys"><span><kbd>⌥1</kbd>좋아요</span><span><kbd>Esc</kbd>괜찮아요</span></div>
+      <div class="timer"><i style="width:62%"></i></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 3. 순간 2 ===================== -->
+<section>
+  <div class="cap"><span class="n">03</span>순간 2 · 비교 망설임<span class="d">빽빽한 텍스트 응답 · 같은 문단 다시 읽기 + 스크롤 역주행 + 가격 선택 → 커서 옆 칩</span></div>
+  <div class="app">
+    <div class="brand">선물가게<small>쇼핑 에이전트</small></div>
+    <div class="tr-ctrl"><div class="gp"><div class="sw"></div>감지 모드</div><div class="gp">장바구니 <b>0</b></div></div>
+
+    <div class="panel glass">
+      <div class="ph2"><b><span class="orb"></span>poin 로그</b><div class="tools"><span>일시정지</span><span>내보내기</span><span>` 접기</span></div></div>
+      <div class="sec">
+        <div class="g"><span>문단 왕복</span><div class="bar"><i style="width:70%"></i></div><span class="v">4회</span></div>
+        <div class="g"><span>스크롤 역주행</span><div class="bar"><i style="width:45%"></i></div><span class="v">2회</span></div>
+        <div class="g"><span>체류</span><div class="bar"><i style="width:60%"></i></div><span class="v">7.3초</span></div>
+        <div class="g txt"><span>커서</span><span class="v">응답 3번째 문단</span></div>
+      </div>
+      <div class="traces">
+        <div class="lbl"><span>순간 트레이스</span><span>2 / 4</span></div>
+        <div class="tc">
+          <div class="h">비교 망설임<span>01:05</span></div>
+          <div class="st"><span class="k">신호</span><span class="v">1·3번째 문단 왕복 4회 · 스크롤 역주행 2회 · "78,000원" 선택 · 입력 없음 9초</span></div>
+          <div class="st"><span class="k">순간</span><span class="v">긴 응답 다시 읽기 + 가격 선택</span></div>
+          <div class="st"><span class="k">추론</span><span class="v">글로는 세 개를 비교하기 어려움<br>확신도 <em>0.74</em><span class="conf"><i style="width:74%"></i><b style="left:60%"></b></span> · 590ms</span></div>
+          <div class="st"><span class="k">개입</span><span class="v"><em>표시함</em> · 커서 옆</span></div>
+          <div class="st"><span class="k">반응</span><span class="v">기다리는 중</span></div>
+        </div>
+        <div class="tc mini"><div class="h">요구 모호<span>⌥1 수락</span></div></div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="mission min" style="margin-top:4px"><b>미션</b><span>친구 집들이 선물 · 8만 원 이하</span></div>
+      <div class="chat">
+        <div class="msg user">향이나 분위기 있는 거, 실용적이면 더 좋고요</div>
+        <div class="longtext">
+          <p>성격이 다른 세 가지로 골라 봤어요.</p>
+          <p>첫째, 소이 캔들 3종 세트(32,000원)는 라벤더, 우디, 시트러스 향이 들어 있고 포장이 예뻐서 분위기용으로 좋아요. 다만 향은 호불호가 있어서 친구 취향을 모르면 조금 위험해요. 리뷰에는 "포장이 예뻐요", "향이 오래가요"가 많았어요.<span class="tag glass"><span class="orb"></span>다시 읽음 2</span></p>
+          <p>둘째, 미니 몬스테라 화분(45,000원)은 오래 남는 선물이라 집들이 의미가 있고 공기 정화도 돼요. 대신 물 주기와 햇빛 관리가 필요하고, 생각보다 크다는 후기가 있어요.</p>
+          <p>셋째, 핸드드립 입문 세트(<span class="sel">78,000원</span>)는 드리퍼, 서버, 필터 40매, 원두 200g 구성이라 매일 쓰기 좋고 평점도 4.8로 가장 높아요. 하지만 예산을 거의 다 쓰고, 친구가 커피를 안 마시면 쓸모가 없어요.<span class="tag glass"><span class="orb"></span>다시 읽음 3</span></p>
+          <p>어느 쪽이 끌리세요?</p>
+        </div>
+      </div>
+      <div class="input"><span class="ph">이어서 물어보세요</span><div class="btn"><svg width="15" height="15" viewBox="0 0 14 14" fill="none"><rect x="5" y="1" width="4" height="7" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M2.75 6.5V7a4.25 4.25 0 0 0 8.5 0v-.5M7 11.25V13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></div></div>
+    </div>
+
+    <svg class="path" style="left:300px;top:180px" width="680" height="300"><path d="M420 70 C 560 60, 600 120, 470 150 S 300 260, 520 250 S 640 110, 380 80 S 420 280, 520 262" fill="none" stroke="#1A1A1A" stroke-opacity=".3" stroke-width="1.5" stroke-dasharray="3 6" stroke-linecap="round"/></svg>
+    <svg class="cursor" style="left:812px;top:432px" viewBox="0 0 18 24"><path d="M1 1 L1 19 L6 14.5 L9.5 22 L12.5 20.7 L9 13.5 L15.5 13.5 Z" fill="#111" stroke="#fff" stroke-width="1.2"/></svg>
+    <div class="chip glass anchored" style="left:828px;top:452px">
+      <div class="why"><span class="orb"></span><b>poin</b>같은 문단을 몇 번 다시 읽으셨어요</div>
+      <div class="q">한눈에 보기 쉽게 정리해 드릴까요?</div>
+      <div class="keys multi"><span><kbd>⌥1</kbd>표로 요약</span><span><kbd>⌥2</kbd>사진과 함께</span><span><kbd>Esc</kbd>괜찮아요</span></div>
+      <div class="timer"><i style="width:80%"></i></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 4. 순간 3 + 감지 모드 ===================== -->
+<section>
+  <div class="cap"><span class="n">04</span>순간 3 · 결정 직전 + 감지 모드<span class="d">담기 앞 정지 + 찌푸림 → 끄덕이면 우려에 답, 저으면 대안</span></div>
+  <div class="app">
+    <div class="brand">선물가게<small>쇼핑 에이전트</small></div>
+    <div class="tr-ctrl"><div class="gp cam"><i></i>카메라 사용 중<span>영상은 이 기기 밖으로 나가지 않아요</span></div><div class="gp"><div class="sw on"></div>감지 모드</div><div class="gp">장바구니 <b>0</b></div></div>
+
+    <div class="panel glass">
+      <div class="ph2"><b><span class="orb"></span>poin 로그</b><div class="tools"><span>일시정지</span><span>내보내기</span><span>` 접기</span></div></div>
+      <div class="sec">
+        <div class="sense">
+          <div class="thumb">
+            <svg viewBox="0 0 80 62"><ellipse cx="40" cy="32" rx="15" ry="19" fill="none" stroke="#F5AA64" stroke-opacity=".55" stroke-width=".8"/>
+            <g fill="#F5AA64"><circle cx="34" cy="27" r=".9"/><circle cx="46" cy="27" r=".9"/><circle cx="32" cy="24.5" r=".7"/><circle cx="36" cy="24" r=".7"/><circle cx="44" cy="24" r=".7"/><circle cx="48" cy="24.5" r=".7"/><circle cx="40" cy="33" r=".9"/><circle cx="36" cy="40" r=".7"/><circle cx="40" cy="41" r=".7"/><circle cx="44" cy="40" r=".7"/><circle cx="28" cy="32" r=".6"/><circle cx="52" cy="32" r=".6"/><circle cx="31" cy="43" r=".6"/><circle cx="49" cy="43" r=".6"/><circle cx="40" cy="50" r=".6"/></g></svg>
+          </div>
+          <div class="meta">
+            <svg width="150" height="26" viewBox="0 0 150 26"><defs><linearGradient id="hg" x1="0" x2="1"><stop offset="0" stop-color="#F55702"/><stop offset="1" stop-color="#EEAECA"/></linearGradient></defs><path d="M0 15 L150 15" stroke="rgba(255,255,255,.25)" stroke-dasharray="2 3"/><path d="M0 13 L16 13 L24 5 L32 21 L40 5 L48 21 L56 13 L150 13" fill="none" stroke="url(#hg)" stroke-width="1.6" stroke-linejoin="round"/></svg>
+            <span>머리 좌우 <span class="badge">젓기</span></span>
+            <span>찌푸림 <b>0.46</b> · 시선 <b>가격 영역</b></span>
+          </div>
+        </div>
+        <div class="g"><span>버튼 근처</span><div class="bar"><i style="width:70%"></i></div><span class="v">2.8초</span></div>
+        <div class="g txt"><span>커서</span><span class="v">담기 · 핸드드립 세트</span></div>
+      </div>
+      <div class="traces">
+        <div class="lbl"><span>순간 트레이스</span><span>3 / 4</span></div>
+        <div class="tc">
+          <div class="h">결정 직전 머뭇<span>01:40</span></div>
+          <div class="st"><span class="k">신호</span><span class="v">담기 버튼 근처 정지 2.8초 · 찌푸림 0.46 · 시선 가격 영역</span></div>
+          <div class="st"><span class="k">추론</span><span class="v">예산을 거의 다 쓰는 게 걱정<br>확신도 <em>0.66</em><span class="conf"><i style="width:66%"></i><b style="left:60%"></b></span> · 610ms</span></div>
+          <div class="st"><span class="k">반응</span><span class="v"><em>젓기</em> 감지 → 거절</span></div>
+          <div class="st"><span class="k">결과</span><span class="v">에이전트에 지시 추가: 5만 원 이하 대안 제시</span></div>
+        </div>
+        <div class="tc mini"><div class="h">비교 망설임<span>⌥2 사진과 함께</span></div></div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="mission min" style="margin-top:4px"><b>미션</b><span>친구 집들이 선물 · 8만 원 이하</span></div>
+      <div class="chat">
+        <div class="msg">고르신 핸드드립 입문 세트예요. 담으시면 예산이 2,000원 남아요.</div>
+        <div class="cards" style="grid-template-columns:1fr;max-width:300px">
+          <div class="card"><div class="img" style="background:linear-gradient(160deg,#F7EFE9,#EBDCD2);height:124px">☕</div><div class="b"><div class="nm">핸드드립 입문 세트</div><div class="pr">78,000원</div><div class="tr">드리퍼 · 서버 · 필터 40매 · 원두 200g</div><div class="rv">★ 4.8 · "선물용으로 딱" · 무료 반품 7일</div><div class="add hover">담기</div></div></div>
+        </div>
+      </div>
+      <div class="input"><span class="ph">이어서 물어보세요</span><div class="btn"><svg width="15" height="15" viewBox="0 0 14 14" fill="none"><rect x="5" y="1" width="4" height="7" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M2.75 6.5V7a4.25 4.25 0 0 0 8.5 0v-.5M7 11.25V13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></div></div>
+    </div>
+
+    <svg class="cursor" style="left:452px;top:444px" viewBox="0 0 18 24"><path d="M1 1 L1 19 L6 14.5 L9.5 22 L12.5 20.7 L9 13.5 L15.5 13.5 Z" fill="#111" stroke="#fff" stroke-width="1.2"/></svg>
+    <div class="chip glass anchored" style="left:468px;top:464px">
+      <div class="why"><span class="orb"></span><b>poin</b>담기 앞에서 머뭇거리셨어요</div>
+      <div class="q">가격이나 반품이 마음에 걸리세요?</div>
+      <div class="keys"><span><kbd>⌥1</kbd>네</span><span><kbd>Esc</kbd>아니요</span><span class="sensehint">끄덕 ↕ · 젓기 ↔</span></div>
+      <div class="timer"><i style="width:45%"></i></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 5. 결과 반영 ===================== -->
+<section>
+  <div class="cap"><span class="n">05</span>결과 반영 · 더 나은 다음 턴<span class="d">⌥2를 누르면 다음 응답이 사진 카드로 바뀌고 채팅에 poin 표식이 남음 / 초안 채우기</span></div>
+  <div class="app">
+    <div class="brand">선물가게<small>쇼핑 에이전트</small></div>
+    <div class="tr-ctrl"><div class="gp"><div class="sw"></div>감지 모드</div><div class="gp">장바구니 <b>0</b></div></div>
+
+    <div class="panel glass">
+      <div class="ph2"><b><span class="orb"></span>poin 로그</b><div class="tools"><span>일시정지</span><span>내보내기</span><span>` 접기</span></div></div>
+      <div class="sec">
+        <div class="g"><span>타이핑</span><div class="bar"><i style="width:0%"></i></div><span class="v">0 타/분</span></div>
+        <div class="g txt"><span>커서</span><span class="v">상품 카드 · 몬스테라</span></div>
+      </div>
+      <div class="traces">
+        <div class="lbl"><span>순간 트레이스</span><span>2 / 4</span></div>
+        <div class="tc">
+          <div class="h">비교 망설임<span>01:05</span></div>
+          <div class="st"><span class="k">신호</span><span class="v">문단 왕복 4회 · 스크롤 역주행 2회 · 가격 선택</span></div>
+          <div class="st"><span class="k">추론</span><span class="v">글로는 비교하기 어려움 · <em>0.74</em></span></div>
+          <div class="st"><span class="k">반응</span><span class="v"><em>⌥2 사진과 함께</em> · 1.8초 만에</span></div>
+          <div class="st"><span class="k">결과</span><span class="v">에이전트에 지시 추가<br>"세 상품을 사진 카드로 다시 보여 주고 한 줄로 요약할 것"<br>→ 다음 응답이 카드로 바뀜</span></div>
+        </div>
+        <div class="tc mini"><div class="h">요구 모호<span>⌥1 수락</span></div></div>
+        <div class="tc mini"><div class="h">비교 망설임 · 개입 안 함<span>확신도 0.41</span></div></div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="mission min" style="margin-top:4px"><b>미션</b><span>친구 집들이 선물 · 8만 원 이하</span></div>
+      <div class="chat">
+        <div class="mark glass"><span class="orb"></span>poin이 사진과 함께 다시 보여 달라고 넣었어요<span>⌥2 사진과 함께</span></div>
+        <div class="msg">한눈에 보이게 다시 정리했어요. 분위기는 캔들, 오래 남는 건 화분, 매일 쓰는 건 드립 세트예요.</div>
+        <div class="cards compact">
+          <div class="card"><div class="img" style="background:linear-gradient(160deg,#FFF4E8,#FCE3D0)">🕯️</div><div class="b"><div class="nm">소이 캔들 3종 세트</div><div class="pr">32,000원 · 여유 48,000원</div><div class="tr">분위기 최고 · <em>향 호불호</em></div><div class="add">담기</div></div></div>
+          <div class="card"><div class="img" style="background:linear-gradient(160deg,#F0F7EC,#DCEBD6)">🪴</div><div class="b"><div class="nm">미니 몬스테라 화분</div><div class="pr">45,000원 · 여유 35,000원</div><div class="tr">오래 남음 · <em>관리 필요</em></div><div class="add">담기</div></div></div>
+          <div class="card"><div class="img" style="background:linear-gradient(160deg,#F7EFE9,#EBDCD2)">☕</div><div class="b"><div class="nm">핸드드립 입문 세트</div><div class="pr">78,000원 · 여유 2,000원</div><div class="tr">매일 씀 · <em>예산 거의 다 씀</em></div><div class="add">담기</div></div></div>
+        </div>
+        <div class="msg">커피를 즐기는 친구면 드립 세트, 잘 모르겠으면 캔들 세트가 안전해요.</div>
+        <div class="mark glass"><span class="orb"></span>poin이 다음 질문 초안을 채웠어요<span>고쳐서 보내도 돼요</span></div>
+      </div>
+      <div class="input focus" style="font-size:15px">친구가 커피를 자주 마시는지 모르겠어요. 다른 것도 보여 줄래요?<span class="caret"></span><div class="btn"><svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M7 12V2M7 2L2.5 6.5M7 2L11.5 6.5" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></div></div>
+    </div>
+  <svg class="cursor" style="left:612px;top:300px" viewBox="0 0 18 24"><path d="M1 1 L1 19 L6 14.5 L9.5 22 L12.5 20.7 L9 13.5 L15.5 13.5 Z" fill="#111" stroke="#fff" stroke-width="1.2"/></svg><div class="comp" style="left:628px;top:320px"><span class="orb"></span></div>
+  </div>
+</section>
+
+<!-- ===================== 6. 회고 ===================== -->
+<section>
+  <div class="cap"><span class="n">06</span>세션 회고<span class="d">결제(목) 완료 또는 세션 종료 시</span></div>
+  <div class="app">
+    <div class="brand">선물가게<small>쇼핑 에이전트</small></div>
+    <div class="tr-ctrl"><div class="gp">장바구니 <b>1</b></div></div>
+    <div class="col">
+      <div class="mission min" style="margin-top:4px"><b>미션 완료</b><span>소이 캔들 3종 세트 · 32,000원</span></div>
+      <div class="chat"><div class="msg">결제가 끝났어요. 선물 잘 전해지길 바라요.</div></div>
+    </div>
+    <div class="veil"></div>
+    <div class="retro glass">
+      <div class="k"><span class="orb"></span>poin 세션 회고 · 3분 12초</div>
+      <h2>poin이 <em>4번</em>의 순간을 알아챘고,<br>그중 <em>2번</em>을 받아들이셨어요</h2>
+      <div class="sub">개입은 3번, 1번은 확신이 낮아 조용히 지나갔어요.</div>
+      <div class="tl">
+        <div class="node ok"><div class="tm">00:12</div><div class="nm">요구 모호</div><div>두 가지 질문 먼저</div><div class="rs">⌥1 수락</div></div>
+        <div class="node ok"><div class="tm">01:05</div><div class="nm">비교 망설임</div><div>사진과 함께 다시 정리</div><div class="rs">⌥2 수락</div></div>
+        <div class="node no"><div class="tm">01:40</div><div class="nm">결정 직전</div><div>가격 걱정 확인</div><div class="rs">젓기 → 대안 제시</div></div>
+        <div class="node"><div class="tm">02:10</div><div class="nm">비교 망설임</div><div>개입 안 함</div><div class="rs">확신도 0.41</div></div>
+      </div>
+      <div class="legend"><span>● 수락</span><span>○ 거절</span><span>◌ 개입 안 함 · 무응답</span></div>
+      <div class="acts"><span class="btn2 p">세션 JSON 내보내기</span><span class="btn2">새 세션 시작</span></div>
+    </div>
+  </div>
+</section>
+
+</div>
+</body>
+</html>
