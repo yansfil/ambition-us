@@ -1,0 +1,7 @@
+# 로컬 인증 정보
+.env
+.env.*
+!.env.example
+.build/
+.swiftpm/
+*.app/
