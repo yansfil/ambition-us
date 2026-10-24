@@ -20,7 +20,14 @@ APP="$OUTPUT_DIR/Gaze.app"
 BUNDLE_ID="${BUNDLE_ID:-com.ambition.gaze}"
 VERSION="${VERSION:-0.1.0}"
 BUILD_NUMBER="${BUILD_NUMBER:-$(date +%Y%m%d%H%M)}"
-CODESIGN_IDENTITY="${CODESIGN_IDENTITY:--}"
+# 서명 ID를 지정하지 않으면 키체인의 Developer ID → Apple Development 순으로 고른다.
+# ad-hoc(-) 서명은 빌드마다 서명이 바뀌어 손쉬운 사용·화면 기록 허용이 매번 풀린다.
+if [[ -z "${CODESIGN_IDENTITY:-}" ]]; then
+    IDENTITIES="$(security find-identity -v -p codesigning 2>/dev/null || true)"
+    CODESIGN_IDENTITY="$(awk -F'"' '/Developer ID Application/ {print $2; exit}' <<<"$IDENTITIES")"
+    [[ -n "$CODESIGN_IDENTITY" ]] || CODESIGN_IDENTITY="$(awk -F'"' '/Apple Development/ {print $2; exit}' <<<"$IDENTITIES")"
+    [[ -n "$CODESIGN_IDENTITY" ]] || CODESIGN_IDENTITY="-"
+fi
 
 cd "$ROOT"
 echo "==> swift build -c release --product GazeApp"
@@ -101,7 +108,7 @@ else
 </plist>
 ENT
     codesign --force --sign "$CODESIGN_IDENTITY" --identifier "$BUNDLE_ID" --options runtime \
-        --entitlements "$ENTITLEMENTS" --timestamp "$APP"
+        --entitlements "$ENTITLEMENTS" --timestamp=none "$APP"
     rm -f "$ENTITLEMENTS"
 fi
 

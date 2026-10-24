@@ -151,8 +151,9 @@ final class PermissionsModel {
             }
         case .speechRecognition:
             guard states[permission] == .notDetermined else { return openSettings(permission) }
-            SFSpeechRecognizer.requestAuthorization { _ in
-                Task { @MainActor [weak self] in self?.refresh() }
+            Task {
+                await Self.requestSpeechAuthorization()
+                refresh()
             }
         case .accessibility:
             PermissionStatus.requestAccessibility()
@@ -160,6 +161,14 @@ final class PermissionsModel {
         case .screenRecording:
             PermissionStatus.requestScreenCapture()
             openSettings(permission)
+        }
+    }
+
+    /// TCC는 완료 블록을 백그라운드 큐에서 부른다. MainActor 클래스 안의 클로저는 MainActor로 추론되어
+    /// 그 큐에서 실행되면 격리 검사로 앱이 종료되므로, nonisolated 함수에서 continuation으로 받는다.
+    private nonisolated static func requestSpeechAuthorization() async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            SFSpeechRecognizer.requestAuthorization { _ in continuation.resume() }
         }
     }
 
