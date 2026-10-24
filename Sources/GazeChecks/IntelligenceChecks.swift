@@ -365,7 +365,7 @@ private func requestShapeChecks() async throws {
     check(request.timeoutInterval == 4, "요청 시간 제한 4초")
 
     let body = try JSONDecoder().decode(JSONValue.self, from: request.httpBody ?? Data())
-    check(body["model"] == "claude-haiku-5-5", "model = claude-haiku-5-5")
+    check(body["model"] == "claude-sonnet-5-5", "model = claude-sonnet-5-5")
     check(!body.containsKey("thinking") && !body.containsKey("budget_tokens"), "thinking/budget_tokens 없음")
     check(!body.containsKey("tool_choice") && !body.containsKey("tools"), "강제 tool_choice·tools 없음")
     check(!body.containsKey("temperature") && !body.containsKey("top_p"), "샘플링 파라미터 없음")

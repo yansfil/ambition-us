@@ -18,7 +18,7 @@ public struct ClaudeClientConfiguration: Sendable, Equatable {
     public var refusalFallback: Bool
 
     public init(endpoint: URL = URL(string: "https://api.anthropic.com/v1/messages")!,
-                model: String = "claude-haiku-5-5",
+                model: String = "claude-sonnet-5-5",
                 anthropicVersion: String = "2023-06-01",
                 effort: String? = "low",
                 maxTokens: Int = 2048,
