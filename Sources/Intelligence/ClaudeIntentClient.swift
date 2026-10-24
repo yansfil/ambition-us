@@ -102,9 +102,8 @@ public actor ClaudeIntentClient: IntentModelClient {
         } catch {
             outcome = .transportError(String(describing: type(of: error)))
         }
-        if case .decision = outcome {} else {
-            Self.log.debug("Claude 호출 결과: \(String(describing: outcome), privacy: .public)")
-        }
+        let model = configuration.model
+        Self.log.notice("Claude \(model, privacy: .public) 결과: \(String(describing: outcome), privacy: .public)")
         return outcome
     }
 

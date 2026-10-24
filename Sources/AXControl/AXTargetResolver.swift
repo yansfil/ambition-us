@@ -13,6 +13,10 @@ public final class AXTargetResolver: UITargetResolving {
         public var maxPromotionDepth: Int
         public var maxTitleLength: Int
 
+        /// 시선이 닿은 묶음 안에서 포커스된 입력 칸을 찾을 때 허용하는 거리(포인트)와 깊이.
+        public var focusedFieldRadius: CGFloat = 260
+        public var maxFocusContainerDepth: Int = 14
+
         public init(promoteToInteractiveAncestor: Bool = true, maxPromotionDepth: Int = 3, maxTitleLength: Int = 120) {
             self.promoteToInteractiveAncestor = promoteToInteractiveAncestor
             self.maxPromotionDepth = maxPromotionDepth
@@ -58,7 +62,32 @@ public final class AXTargetResolver: UITargetResolving {
         if options.promoteToInteractiveAncestor {
             element = promote(element)
         }
-        return store.makeTarget(element, pid: pid, observedAt: clock.now(), maxTitleLength: options.maxTitleLength)
+        let target = store.makeTarget(element, pid: pid, observedAt: clock.now(), maxTitleLength: options.maxTitleLength)
+        if target.isEditable { return target }
+        // 터미널·웹 편집기처럼 실제 입력 칸이 묶음(AXGroup) 안에 숨어 있으면, 시선이 닿은 묶음 안의 포커스된 입력 칸을 대상으로 한다.
+        if let focused = focusedEditable(inside: element, pid: pid, near: point) { return focused }
+        return target
+    }
+
+    /// 포커스된 편집 가능 요소가 `container` 안에 있고 시선 점 가까이에 있으면 그 요소.
+    private func focusedEditable(inside container: AXElementRef, pid: pid_t, near point: CGPoint) -> UITarget? {
+        guard let focused = AXElementRef.application(pid).element(AXAttr.focusedUIElement),
+              focused != container else { return nil }
+        var ancestor = focused.element(AXAttr.parent)
+        var depth = 0
+        while let current = ancestor, depth < options.maxFocusContainerDepth {
+            if current == container { break }
+            ancestor = current.element(AXAttr.parent)
+            depth += 1
+        }
+        guard ancestor == container else { return nil }
+        let target = store.makeTarget(focused, pid: pid, observedAt: clock.now(), maxTitleLength: options.maxTitleLength)
+        guard target.isEditable, !target.isSecure else { return nil }
+        let frame = target.frame
+        let dx = max(frame.minX - point.x, 0, point.x - frame.maxX)
+        let dy = max(frame.minY - point.y, 0, point.y - frame.maxY)
+        guard (dx * dx + dy * dy).squareRoot() <= options.focusedFieldRadius else { return nil }
+        return target
     }
 
     private func resolveFocused() -> UITarget? {

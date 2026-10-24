@@ -6,6 +6,10 @@ import Intelligence
 // 네트워크는 호출하지 않는다. 모델·전송·키체인·시계는 모두 가짜로 바꾼다.
 
 func intelligenceChecks() async {
+    // 실제 API를 한 번 부르는 선택 검사: GAZE_LIVE_CLAUDE=1 GAZE_ENV_FILE=.env swift run GazeChecks
+    if ProcessInfo.processInfo.environment["GAZE_LIVE_CLAUDE"] == "1" {
+        await suite("Intelligence: 실제 Claude 호출") { await liveClaudeCheck() }
+    }
     await suite("Intelligence: 로컬 빠른 경로") { try await localFastPathChecks() }
     await suite("Intelligence: 선제 제안·쿨다운") { try await suggestionChecks() }
     await suite("Intelligence: 모델 판단 적용") { try await modelDecisionChecks() }
@@ -597,4 +601,14 @@ private func riskChecks() {
           "Send 버튼 누르기 → high")
     check(RiskClassifier.risk(for: .press(target: uiTarget("b", role: "AXButton", title: nil)), commandText: "눌러줘") == .medium,
           "이름 없는 버튼 누르기 → medium")
+}
+
+
+private func liveClaudeCheck() async {
+    let client = ClaudeIntentClient()
+    let start = ContinuousClock.now
+    let outcome = await client.call(sampleRequest())
+    let elapsed = ContinuousClock.now - start
+    print("  모델=\(client.configuration.model) effort=\(client.configuration.effort ?? "-") 걸린 시간=\(elapsed) 결과=\(outcome)")
+    if case .decision = outcome { check(true, "실제 호출 성공") } else { check(false, "실제 호출 실패: \(outcome)") }
 }
