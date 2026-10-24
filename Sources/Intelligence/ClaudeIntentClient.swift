@@ -7,7 +7,7 @@ public struct ClaudeClientConfiguration: Sendable, Equatable {
     public var endpoint: URL
     public var model: String
     public var anthropicVersion: String
-    /// effort를 지원하는 모델에서만 지정한다. Haiku 4.5는 effort를 받지 않으므로(400) 기본값은 nil이다.
+    /// 지연 시간을 줄이려고 low. effort를 지원하지 않는 모델(Haiku 4.5 등)은 nil로 둔다.
     public var effort: String?
     /// thinking 토큰도 포함되는 상한. 출력 자체는 짧은 JSON이다.
     public var maxTokens: Int
@@ -18,9 +18,9 @@ public struct ClaudeClientConfiguration: Sendable, Equatable {
     public var refusalFallback: Bool
 
     public init(endpoint: URL = URL(string: "https://api.anthropic.com/v1/messages")!,
-                model: String = "claude-haiku-4-5-20251001",
+                model: String = "claude-haiku-5-5",
                 anthropicVersion: String = "2023-06-01",
-                effort: String? = nil,
+                effort: String? = "low",
                 maxTokens: Int = 2048,
                 timeout: TimeInterval = 4,
                 refusalFallback: Bool = false) {

@@ -365,11 +365,11 @@ private func requestShapeChecks() async throws {
     check(request.timeoutInterval == 4, "요청 시간 제한 4초")
 
     let body = try JSONDecoder().decode(JSONValue.self, from: request.httpBody ?? Data())
-    check(body["model"] == "claude-haiku-4-5-20251001", "model = claude-haiku-4-5-20251001")
+    check(body["model"] == "claude-haiku-5-5", "model = claude-haiku-5-5")
     check(!body.containsKey("thinking") && !body.containsKey("budget_tokens"), "thinking/budget_tokens 없음")
     check(!body.containsKey("tool_choice") && !body.containsKey("tools"), "강제 tool_choice·tools 없음")
     check(!body.containsKey("temperature") && !body.containsKey("top_p"), "샘플링 파라미터 없음")
-    check(body["output_config"]?["effort"] == nil, "Haiku 기본값은 effort 없음(미지원)")
+    check(body["output_config"]?["effort"] == "low", "output_config.effort = low")
     check(body["output_config"]?["format"]?["type"] == "json_schema", "output_config.format.type = json_schema")
     check(body["output_config"]?["format"]?["schema"] == IntentDecisionSchema.schema, "스키마 포함")
     check(body["fallbacks"] == nil, "기본값은 fallbacks 없음")
