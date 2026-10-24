@@ -507,6 +507,8 @@ export function installEngine(): () => void {
   if (poin().chatBusy && !busyPeriods.some((p) => p.end === null)) {
     busyPeriods = [...busyPeriods.slice(-4), { start: Date.now(), end: null }];
   }
+  // 해제된 사이에 스트리밍이 끝났으면 남은 열린 구간을 닫는다
+  if (!poin().chatBusy) busyPeriods = busyPeriods.map((p) => (p.end === null ? { ...p, end: Date.now() } : p));
 
   window.addEventListener('keydown', onKeyDown, true);
   const loop = setInterval(tick, TICK_MS);
