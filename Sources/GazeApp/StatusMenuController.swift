@@ -10,6 +10,8 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
 
     private let statusLine = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let errorLine = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+    private let gazeLine = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+    private let calibrationLine = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private lazy var pauseItem = makeItem("일시정지", #selector(togglePause), key: "p")
     private lazy var killItem = makeItem("비상 정지", #selector(toggleKillSwitch), key: ".")
     private lazy var calibrateItem = makeItem("시선 보정 시작…", #selector(startCalibration), key: "")
@@ -22,9 +24,11 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         super.init()
         statusLine.isEnabled = false
         errorLine.isEnabled = false
+        gazeLine.isEnabled = false
+        calibrationLine.isEnabled = false
         menu.autoenablesItems = false
         menu.delegate = self
-        menu.items = [statusLine, errorLine, .separator(), pauseItem, killItem, .separator(),
+        menu.items = [statusLine, errorLine, gazeLine, calibrationLine, .separator(), pauseItem, killItem, .separator(),
                       calibrateItem, permissionsItem, demoItem, .separator(), quitItem]
         killItem.keyEquivalentModifierMask = [.command, .option]
         item.menu = menu
@@ -53,6 +57,11 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         let errors = delegate.sourceErrors
         errorLine.title = errors.joined(separator: " · ")
         errorLine.isHidden = errors.isEmpty
+        let gaze = delegate.gazeStatusLines
+        gazeLine.title = gaze.first ?? ""
+        gazeLine.isHidden = gaze.isEmpty
+        calibrationLine.title = gaze.count > 1 ? gaze[1] : ""
+        calibrationLine.isHidden = gaze.count < 2
 
         item.button?.image = NSImage(systemSymbolName: symbol, accessibilityDescription: "Gaze \(modeText)")
         item.button?.toolTip = statusLine.title

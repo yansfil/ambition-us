@@ -76,17 +76,20 @@ public enum PupilLocator {
         return inside
     }
 
-    /// 420 bi-planar 버퍼의 Y 평면에서 `rect`(픽셀, 좌상단 원점)만 복사한다. 다른 포맷이면 nil.
+    /// 420 bi-planar 버퍼의 Y 평면(또는 32BGRA의 밝기 Y = 0.299R + 0.587G + 0.114B)에서
+    /// `rect`(픽셀, 좌상단 원점)만 복사한다. 다른 포맷이면 nil.
     public static func lumaCrop(_ buffer: CVPixelBuffer, rect: CGRect) -> (image: LumaImage, origin: CGPoint)? {
         let format = CVPixelBufferGetPixelFormatType(buffer)
-        guard format == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
+        let isBGRA = format == kCVPixelFormatType_32BGRA
+        guard isBGRA || format == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
             || format == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange else { return nil }
         CVPixelBufferLockBaseAddress(buffer, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
-        guard let base = CVPixelBufferGetBaseAddressOfPlane(buffer, 0) else { return nil }
-        let planeWidth = CVPixelBufferGetWidthOfPlane(buffer, 0)
-        let planeHeight = CVPixelBufferGetHeightOfPlane(buffer, 0)
-        let bytesPerRow = CVPixelBufferGetBytesPerRowOfPlane(buffer, 0)
+        guard let base = isBGRA ? CVPixelBufferGetBaseAddress(buffer) : CVPixelBufferGetBaseAddressOfPlane(buffer, 0)
+        else { return nil }
+        let planeWidth = isBGRA ? CVPixelBufferGetWidth(buffer) : CVPixelBufferGetWidthOfPlane(buffer, 0)
+        let planeHeight = isBGRA ? CVPixelBufferGetHeight(buffer) : CVPixelBufferGetHeightOfPlane(buffer, 0)
+        let bytesPerRow = isBGRA ? CVPixelBufferGetBytesPerRow(buffer) : CVPixelBufferGetBytesPerRowOfPlane(buffer, 0)
         let x0 = max(0, Int(floor(rect.minX))), y0 = max(0, Int(floor(rect.minY)))
         let x1 = min(planeWidth, Int(ceil(rect.maxX))), y1 = min(planeHeight, Int(ceil(rect.maxY)))
         guard x1 - x0 >= 4, y1 - y0 >= 4 else { return nil }
@@ -95,8 +98,17 @@ public enum PupilLocator {
         let src = base.assumingMemoryBound(to: UInt8.self)
         pixels.withUnsafeMutableBufferPointer { dst in
             for row in 0..<height {
-                let srcRow = src + (y0 + row) * bytesPerRow + x0
-                (dst.baseAddress! + row * width).update(from: srcRow, count: width)
+                if isBGRA {
+                    let srcRow = src + (y0 + row) * bytesPerRow + x0 * 4
+                    for column in 0..<width {
+                        let p = srcRow + column * 4
+                        let y = 0.114 * Double(p[0]) + 0.587 * Double(p[1]) + 0.299 * Double(p[2])
+                        dst[row * width + column] = UInt8(min(255, y + 0.5))
+                    }
+                } else {
+                    let srcRow = src + (y0 + row) * bytesPerRow + x0
+                    (dst.baseAddress! + row * width).update(from: srcRow, count: width)
+                }
             }
         }
         return (LumaImage(width: width, height: height, pixels: pixels), CGPoint(x: x0, y: y0))

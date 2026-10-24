@@ -16,20 +16,25 @@ public struct HeadPose: Sendable, Codable, Equatable {
 /// 보정(calibration) 입력 특징 벡터.
 ///
 /// - `primary`: 시선 방향의 2차원 대리값. 보정 모델이 2차 항까지 확장한다.
-///   랜드마크 추정기는 눈 안 동공 오프셋, L2CS-Net은 시선 yaw/pitch(라디안).
-/// - `auxiliary`: 선형 항으로만 쓰는 보조 특징(머리 자세, 얼굴 위치·크기 등).
-///   같은 추정기라면 항상 같은 길이여야 한다.
+///   랜드마크 추정기는 눈 안 동공 오프셋, CNN 추정기는 시선 광선과 화면 평면의 교점(cm).
+/// - `auxiliary`: 선형 항으로만 쓰는 보조 특징(머리 자세, 얼굴 위치·크기, 홍채 오프셋 등).
+///   같은 추정기라면 항상 같은 길이여야 한다. 앞의 두 값은 항상 머리 yaw/pitch다.
 public struct GazeFeatures: Sendable, Codable, Equatable {
     public var time: MonotonicTime
     public var primary: SIMD2<Double>
     public var auxiliary: [Double]
     public var headPose: HeadPose?
     public var confidence: Double
+    /// CNN 원시 시선 각도(yaw, pitch 라디안). 진단용, 회귀에는 쓰지 않는다.
+    public var gazeAngles: SIMD2<Double>?
+    /// 정규화 얼굴 상자(좌상단 원점). 보정 중 머리 움직임 판정에 쓴다.
+    public var faceBox: CGRect?
 
     public init(time: MonotonicTime, primary: SIMD2<Double>, auxiliary: [Double] = [],
-                headPose: HeadPose? = nil, confidence: Double = 1) {
+                headPose: HeadPose? = nil, confidence: Double = 1, gazeAngles: SIMD2<Double>? = nil,
+                faceBox: CGRect? = nil) {
         self.time = time; self.primary = primary; self.auxiliary = auxiliary
-        self.headPose = headPose; self.confidence = confidence
+        self.headPose = headPose; self.confidence = confidence; self.gazeAngles = gazeAngles; self.faceBox = faceBox
     }
 
     /// [primary.x, primary.y] + auxiliary
@@ -56,11 +61,17 @@ public struct FaceMeasurement: Sendable, Equatable {
     public var leftEye: EyeMeasurement?
     public var rightEye: EyeMeasurement?
     public var confidence: Double
+    /// 전체 랜드마크(76점) 무게중심(정규화, 좌상단 원점). 얼굴 상자보다 프레임 간 떨림이 3–4배 작아 CNN 크롭 정렬에 쓴다.
+    public var landmarkCenter: CGPoint?
+    /// 전체 랜드마크의 무게중심 기준 RMS 반경(픽셀).
+    public var landmarkRadius: Double?
 
     public init(time: MonotonicTime, imageSize: CGSize, boundingBox: CGRect, headPose: HeadPose?,
-                leftEye: EyeMeasurement?, rightEye: EyeMeasurement?, confidence: Double) {
+                leftEye: EyeMeasurement?, rightEye: EyeMeasurement?, confidence: Double,
+                landmarkCenter: CGPoint? = nil, landmarkRadius: Double? = nil) {
         self.time = time; self.imageSize = imageSize; self.boundingBox = boundingBox; self.headPose = headPose
         self.leftEye = leftEye; self.rightEye = rightEye; self.confidence = confidence
+        self.landmarkCenter = landmarkCenter; self.landmarkRadius = landmarkRadius
     }
 }
 
@@ -74,13 +85,20 @@ public struct GazeEstimatorInput {
     }
 }
 
-/// 얼굴 측정값 → 보정 전 특징 벡터. 랜드마크 추정기와 CoreML(L2CS-Net) 추정기를 바꿔 끼운다.
+/// 얼굴 측정값 → 보정 전 특징 벡터. 랜드마크 추정기와 CoreML(CNN) 추정기를 바꿔 끼운다.
 /// 추정기를 바꾸면 특징 의미가 달라지므로 기존 보정은 다시 해야 한다.
 public protocol GazeEstimator: Sendable {
     /// 보정 모델과 짝을 맞추기 위한 식별자.
     var identifier: String { get }
+    /// 표준화할 때 쓰는 특징별 최소 척도(`vector` 순서). 보정 중 거의 변하지 않는 보조 특징이
+    /// z-점수로 부풀려져 잡음을 키우지 않게 한다. 비어 있으면 하한 없음.
+    var featureScaleFloors: [Double] { get }
     /// 눈 감김 등으로 추정할 수 없으면 nil.
     func estimate(_ input: GazeEstimatorInput) throws -> GazeFeatures?
+}
+
+extension GazeEstimator {
+    public var featureScaleFloors: [Double] { [] }
 }
 
 /// Vision 랜드마크만으로 만드는 특징 추정기(모델 파일 불필요).
@@ -98,8 +116,11 @@ public struct LandmarkGazeEstimator: GazeEstimator {
     }
 
     public var configuration: Configuration
-    public var identifier: String { "landmarks-v1" }
+    public var identifier: String { Self.identifier }
+    public static let identifier = "landmarks-v1"
     public static let auxiliaryCount = 5
+    /// [동공 x, 동공 y, yaw, pitch, 얼굴 x, 얼굴 y, 얼굴 폭]
+    public var featureScaleFloors: [Double] { [0.01, 0.01, 0.05, 0.05, 0.03, 0.03, 0.02] }
 
     public init(configuration: Configuration = .init()) {
         self.configuration = configuration
@@ -126,7 +147,7 @@ public struct LandmarkGazeEstimator: GazeEstimator {
         ]
         let eyeFactor = eyes.count == 2 ? 1 : configuration.singleEyeConfidence
         return GazeFeatures(time: face.time, primary: offset, auxiliary: auxiliary, headPose: pose,
-                            confidence: clamp(face.confidence * eyeFactor, 0, 1))
+                            confidence: clamp(face.confidence * eyeFactor, 0, 1), faceBox: face.boundingBox)
     }
 
     public struct EyeGeometry: Sendable, Equatable {

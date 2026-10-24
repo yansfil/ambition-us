@@ -6,3 +6,24 @@
 .swiftpm/
 *.app/
 /build/
+
+# 시선 CNN 모델 산출물(scripts/fetch-gaze-model.sh가 만든다; 커밋하지 않음)
+*.mlpackage/
+*.mlmodelc/
+*.mlmodel
+scripts/**/*.pt
+scripts/**/*.onnx
+build/**/*.pt
+build/**/*.onnx
+# Python 가상환경·캐시
+.venv*/
+__pycache__/
+*.pyc
+
+# 시선 CNN 모델·변환 산출물(커밋하지 않음)
+*.mlpackage/
+*.mlmodelc/
+*.pt
+*.onnx
+.venv*/
+__pycache__/

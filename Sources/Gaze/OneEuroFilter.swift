@@ -11,7 +11,9 @@ public struct OneEuroParameters: Sendable, Equatable {
     /// 미분 신호 차단 주파수(Hz).
     public var derivativeCutoff: Double
 
-    public init(minCutoff: Double = 0.8, beta: Double = 0.004, derivativeCutoff: Double = 1.0) {
+    /// 기본값은 `GazeBench tune-filter`(30Hz, 백색 잡음 25–40pt + 느린 드리프트 15pt, 고정 안정화 포함)에서
+    /// 사케이드 후 80pt 안 도달 중앙값 ≤ 0.1초 조건으로 고정 중 떨림·오차가 가장 작은 조합이다.
+    public init(minCutoff: Double = 0.6, beta: Double = 0.0015, derivativeCutoff: Double = 1.0) {
         self.minCutoff = minCutoff; self.beta = beta; self.derivativeCutoff = derivativeCutoff
     }
 
