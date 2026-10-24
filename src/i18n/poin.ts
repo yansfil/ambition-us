@@ -7,11 +7,13 @@ export const poin = {
     ambiguous_request: '괜찮아요',
     comparison_hesitation: '괜찮아요',
     pre_decision: '아니요',
+    next_turn: '괜찮아요',
   },
   momentName: {
     ambiguous_request: '요구 모호',
     comparison_hesitation: '비교 망설임',
     pre_decision: '결정 직전 머뭇',
+    next_turn: '다음 턴 제안',
   },
 
   /** 커서 타깃의 사람이 읽는 이름(data-poin-label이 없을 때) */
@@ -47,6 +49,8 @@ export const poin = {
       ambiguous_request: { accept1: '추천 전에 두 가지 먼저 질문', accept2: '추천 전에 두 가지 먼저 질문', decline: '' },
       comparison_hesitation: { accept1: '직전 추천을 표로 요약', accept2: '사진 카드로 다시 보여 주기', decline: '' },
       pre_decision: { accept1: '가격 대비 가치와 반품 정책 답변', accept2: '가격 대비 가치와 반품 정책 답변', decline: '더 저렴한 대안 2개 제시' },
+      // 다음 턴 제안은 LLM이 고른 행동이라 고정 요약 없이 markText를 쓴다
+      next_turn: { accept1: '', accept2: '', decline: '' },
     },
   },
 
@@ -72,6 +76,13 @@ export const poin = {
       accept1: '네',
       accept1Mark: 'poin이 가격과 반품부터 답하게 했어요',
       declineMark: 'poin이 더 저렴한 대안을 보여 주게 했어요',
+    },
+    next_turn: {
+      prompt: '다음 할 일을 하나 제안해 드릴까요?',
+      evidenceLine: '답을 보고 잠시 멈추셨어요',
+      accept1: '좋아요',
+      agentMark: 'poin이 다음 할 일을 제안하게 했어요',
+      agentMarkWith: (label: string) => `poin 제안: ${label}`, // 라벨 끝 받침에 따라 조사가 바뀌어 조사 없이
     },
   },
 } as const;

@@ -49,11 +49,11 @@ export interface PoinState {
 
 const defaultSettings: PoinSettings = {
   threshold: 0.4,
-  dwellMs: 1500,
-  pauseMs: 4000,
-  cooldownMs: 45_000,
-  maxInterventions: 4,
-  chipTimeoutMs: 8000,
+  dwellMs: 1000,
+  pauseMs: 2500,
+  cooldownMs: 15_000,
+  maxInterventions: 8,
+  chipTimeoutMs: 15_000,
   filters: { verbal: true, paraverbal: true, cursor: true, sense: true, system: true },
   paused: false,
 };

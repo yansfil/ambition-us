@@ -3,5 +3,6 @@ import { chat } from './chat';
 import { poin } from './poin';
 import { panel } from './panel';
 import { sense } from './sense';
+import { consent } from './consent';
 
-export const t = { chat, poin, panel, sense };
+export const t = { chat, poin, panel, sense, consent };

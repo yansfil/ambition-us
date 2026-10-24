@@ -97,6 +97,7 @@ function PartView({ part, streaming, onAdd }: { part: Part; streaming: boolean; 
               <span>{t.chat.orderTotal}</span>
               <span>{t.chat.won(o.total)}</span>
             </div>
+            {o.overBudget && <div className="mt-1 text-right text-[12px] text-[var(--c-warn-text)]">{t.chat.budgetOver(o.overBy)}</div>}
           </div>
         );
       }

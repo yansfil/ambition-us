@@ -12,6 +12,7 @@ import { poin, uid, usePoin } from '../store';
 import type {
   ActiveChip, ChoiceId, Effect, InferRequest, InferResult, MomentCandidate, MomentType, Reaction, ReactionVia, Trace,
 } from '../types';
+import { applyReaction, BACKOFF_COOLDOWN_MS, type Streaks } from './backoff';
 import { multiProductInfo, productContext } from './context';
 
 const TICK_MS = 500;
@@ -32,11 +33,22 @@ let lastPartialKey = '';
 let endedLogged = false;
 /** 세션이 바뀌거나 엔진이 해제되면 올린다. 이전 세대의 비동기 추론 결과는 버린다 */
 let generation = 0;
+/** 마지막 에이전트 응답이 끝난 시각(다음 턴 제안 룰) */
+let answerDoneAt = 0;
+/** 순간 종류별 연속 거절·무응답 수(백오프) */
+let declineStreaks: Streaks = {};
+/** 순간별 마지막 칩 표시 시각 */
+let lastShown: Partial<Record<MomentType, number>> = {};
+/** 응답 스트리밍 구간(최근 몇 개). 커서·스크롤 근거에서 제외할 때 쓴다 */
+let busyPeriods: { start: number; end: number | null }[] = [];
+/** 다음 턴 제안 후보가 이미 나온 응답 */
+let nextTurnUsedKey: string | null = null;
+let lastAnswerKey: string | null = null;
 
 // ---------- prefetch 상태 ----------
 const PREFETCH_TTL_MS = 8000;
 const PREFETCH_PER_MIN = 3;
-const MOMENT_TYPES: MomentType[] = ['ambiguous_request', 'comparison_hesitation', 'pre_decision'];
+const MOMENT_TYPES: MomentType[] = ['ambiguous_request', 'comparison_hesitation', 'pre_decision', 'next_turn'];
 interface Prefetch {
   type: MomentType;
   startedAt: number;
@@ -88,6 +100,10 @@ function tick() {
   }
   endedLogged = false;
   const now = Date.now();
+  const mp = multiProductInfo();
+  // 응답 식별자: 마지막 에이전트 메시지 id(없으면 assistant 턴 수)
+  const answerKey = mp.messageId ?? String(st.chatContext.filter((c) => c.role === 'assistant').length);
+  lastAnswerKey = answerKey;
   const out = detect({
     now,
     signals: st.signals,
@@ -96,8 +112,13 @@ function tick() {
     draft: collector.draft,
     nearDecision: collector.nearDecision,
     lastDecisionClickAt: collector.lastDecisionClickAt,
-    multiProduct: multiProductInfo(),
+    multiProduct: mp,
     lastFired,
+    answerDoneAt,
+    lastShown,
+    busyPeriods,
+    answerKey,
+    nextTurnUsedKey,
   });
 
   const partialKey = out.partials.map((p) => `${p.type}:${p.have.map((h) => h.replace(/[\d.]+초/, '')).join(',')}`).join('|');
@@ -106,6 +127,10 @@ function tick() {
     for (const p of out.partials) log.debug('moment', `${momentName(p.type)} 근거 일부: ${p.have.join(', ')} (필요: ${p.need})`);
   }
 
+  if (out.nextTurnSuppressed && nextTurnUsedKey !== answerKey) {
+    nextTurnUsedKey = answerKey;
+    log.info('moment', `다음 턴 제안 생략: 같은 시점에 ${out.hits.map((h) => momentName(h.type)).join(', ')}이(가) 우선`);
+  }
   for (const hit of out.hits) handleHit(hit, now);
   for (const p of out.partials) {
     if (p.progress >= PREFETCH_PROGRESS && !out.hits.some((h) => h.type === p.type)) maybePrefetch(p, now);
@@ -145,7 +170,7 @@ function maybePrefetch(partial: RulePartial, now: number) {
     if (prefetches[type] !== p) return;
     delete prefetches[type];
     pstats.discarded++;
-    log.info('infer', `prefetch 폐기: ${momentName(type)} (8초 안에 확정 안 됨)`);
+    log.info('infer', `prefetch 폐기: ${momentName(type)} (${PREFETCH_TTL_MS / 1000}초 안에 확정 안 됨)`);
   }, PREFETCH_TTL_MS);
   prefetches[type] = p;
   pstats.started++;
@@ -165,7 +190,7 @@ async function takePrefetch(type: MomentType, traceId: string, confirmAt: number
   const age = confirmAt - p.startedAt;
   if (age > PREFETCH_TTL_MS) {
     pstats.miss++;
-    log.info('infer', `prefetch 미적중: 요청이 ${age}ms 전에 시작돼 8초 초과`, { traceId, type });
+    log.info('infer', `prefetch 미적중: 요청이 ${age}ms 전에 시작돼 ${PREFETCH_TTL_MS / 1000}초 초과`, { traceId, type });
     return null;
   }
   if (p.result) {
@@ -187,6 +212,7 @@ async function takePrefetch(type: MomentType, traceId: string, confirmAt: number
 
 function handleHit(hit: RuleHit, now: number) {
   lastFired = { ...lastFired, [hit.type]: now };
+  if (hit.type === 'next_turn') nextTurnUsedKey = lastAnswerKey;
   const moment: MomentCandidate = {
     id: uid('mom'),
     t: now,
@@ -326,6 +352,7 @@ function showChip(traceId: string, type: MomentType, result: InferResult, confir
     timeoutMs: st.settings.chipTimeoutMs,
   };
   st.setActiveChip(chip);
+  lastShown = { ...lastShown, [type]: now };
   st.incInterventions();
   st.setCooldown(type, now + st.settings.cooldownMs);
   st.updateTrace(traceId, { status: 'shown', shown: true, infer: result });
@@ -382,6 +409,13 @@ export function respond(via: ReactionVia): boolean {
   const description = describe(chip.momentType, choice, effect);
   st.updateTrace(chip.traceId, { status: 'resolved', reaction, outcome: { effect, description } });
   log.info('outcome', description, { traceId: chip.traceId, effect: effect.kind });
+
+  const b = applyReaction(declineStreaks, chip.momentType, choice, now);
+  declineStreaks = b.streaks;
+  if (b.cooldownUntil) {
+    st.setCooldown(chip.momentType, b.cooldownUntil);
+    log.info('moment', `백오프: ${momentName(chip.momentType)} ${Math.round(BACKOFF_COOLDOWN_MS / 60_000)}분 (연속 거절 ${b.streak}회)`, { traceId: chip.traceId });
+  }
   return true;
 }
 
@@ -442,9 +476,24 @@ export function installEngine(): () => void {
       chipTimer = null;
     }
     if (st.sessionEnded && !prev.sessionEnded) logPrefetchSummary();
+    if (!prev.chatBusy && st.chatBusy && !busyPeriods.some((p) => p.end === null)) {
+      busyPeriods = [...busyPeriods.slice(-4), { start: Date.now(), end: null }];
+    }
+    if (prev.chatBusy && !st.chatBusy) {
+      const end = Date.now();
+      // 열린 구간은 모두 닫는다(리마운트로 겹쳐 열렸어도 영구히 열린 채 남지 않게)
+      busyPeriods = busyPeriods.map((p) => (p.end === null ? { ...p, end } : p));
+      answerDoneAt = Date.now();
+      log.debug('moment', '응답 끝: 다음 턴 제안 대기 시작');
+    }
     if (st.sessionId !== prev.sessionId) {
       generation++;
       lastFired = {};
+      answerDoneAt = 0;
+      declineStreaks = {};
+      lastShown = {};
+      busyPeriods = [];
+      nextTurnUsedKey = null;
       inferringId = null;
       clearPrefetches();
       pstats = freshStats();
@@ -453,6 +502,11 @@ export function installEngine(): () => void {
       log.info('moment', '새 세션: 룰 디바운스·prefetch 초기화');
     }
   });
+
+  // 스트리밍 도중에 설치(리마운트)되면 열린 구간으로 시작한다
+  if (poin().chatBusy && !busyPeriods.some((p) => p.end === null)) {
+    busyPeriods = [...busyPeriods.slice(-4), { start: Date.now(), end: null }];
+  }
 
   window.addEventListener('keydown', onKeyDown, true);
   const loop = setInterval(tick, TICK_MS);

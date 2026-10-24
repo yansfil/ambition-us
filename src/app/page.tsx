@@ -11,12 +11,21 @@ import Retro from '@/poin/panel/Retro';
 import SenseRunner from '@/poin/sense/SenseRunner';
 import SenseToggle from '@/poin/sense/SenseToggle';
 import CameraBadge from '@/poin/sense/CameraBadge';
-import { installClientLogging } from '@/lib/log';
+import ConsentModal from '@/components/ConsentModal';
+import { installClientLogging, log } from '@/lib/log';
 import { usePoin } from '@/poin/store';
 
 export default function Home() {
   const sessionId = usePoin((s) => s.sessionId);
   useEffect(() => installClientLogging(sessionId), [sessionId]);
+  // E2E(scripts/e2e-aside.mjs)가 상태와 로그를 읽는 개발 전용 창구
+  useEffect(() => {
+    if (process.env.NODE_ENV !== 'development') return;
+    (window as unknown as { __poinTest?: unknown }).__poinTest = {
+      getState: () => usePoin.getState(),
+      logs: () => log.entries(),
+    };
+  }, []);
 
   return (
     <main className="relative h-dvh w-full overflow-hidden bg-white">
@@ -32,6 +41,7 @@ export default function Home() {
       <Chip />
       <Companion />
       <Retro />
+      <ConsentModal />
     </main>
   );
 }

@@ -278,7 +278,8 @@ export default function ChatApp() {
 
   const onAdd = useCallback(
     (p: Product) => {
-      useCart.getState().add(p, 'card');
+      // 이미 담긴 상품이면(빠른 이중 클릭 등) 채팅으로 다시 보내지 않는다
+      if (!useCart.getState().add(p, 'card')) return;
       dispatch({ text: t.chat.addMessage(p.name) });
     },
     [dispatch],

@@ -19,7 +19,7 @@ export interface Signal {
   data: Record<string, unknown>;
 }
 
-export type MomentType = 'ambiguous_request' | 'comparison_hesitation' | 'pre_decision';
+export type MomentType = 'ambiguous_request' | 'comparison_hesitation' | 'pre_decision' | 'next_turn';
 
 export interface MomentCandidate {
   id: string;

@@ -78,6 +78,7 @@ export const panel = {
   moment: {
     ambiguous_request: '요구 모호',
     comparison_hesitation: '비교 망설임',
+    next_turn: '다음 턴 제안',
     pre_decision: '결정 직전 머뭇',
   },
   via: {

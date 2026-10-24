@@ -1,6 +1,6 @@
 // sense 모듈 UI 문구. 이 파일은 해당 모듈 담당만 수정한다. 영어 전환 시 en/sense.ts를 같은 키로 추가.
 export const sense = {
-  toggleLabel: '감지 모드',
+  toggleLabel: '안면 인식까지 감지해요',
   toggleStarting: '카메라를 켜는 중',
   deniedHint: '카메라 권한이 거부됐어요',
   deniedHow: '주소창의 카메라 아이콘에서 허용한 뒤 다시 켜 주세요',

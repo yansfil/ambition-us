@@ -9,6 +9,13 @@ export const PREFETCH_PROGRESS = 0.6;
 const COMPARISON_WINDOW_MS = 15_000;
 const OSCILLATION_WINDOW_MS = 10_000;
 const DECISION_WINDOW_MS = 3_000;
+/** 응답이 끝난 뒤 이만큼 입력·전송이 없으면 다음 턴을 제안한다 */
+export const NEXT_TURN_IDLE_MS = 5_000;
+/** 비교 망설임: 왕복 몇 번이면 근거 하나로 친다 */
+const OSC_MIN = 2;
+/** 스트리밍이 끝난 뒤 이만큼은 커서·스크롤을 근거로 쓰지 않는다(레이아웃 이동·자동 스크롤) */
+export const BUSY_SETTLE_MS = 1_500;
+const SCROLL_BONUS = 0.1;
 const BROW_MIN = 0.45;
 
 /** 입력창 초안 상태(신호 수집기가 유지). 시간 기반 룰(정지)은 신호가 아니라 이 상태로 판단한다. */
@@ -34,6 +41,8 @@ export interface MultiProductInfo {
   multi: boolean;
   /** 화면 어디든 상품 카드가 이미 있는지(에이전트가 추천을 시작했는지) */
   anyProductsShown?: boolean;
+  /** 화면의 에이전트 메시지 수(chatContext가 늦게 갱신될 때 보완) */
+  assistantMessages?: number;
 }
 
 export interface DetectInput {
@@ -47,6 +56,16 @@ export interface DetectInput {
   multiProduct: MultiProductInfo;
   /** 룰별 마지막 발화 시각. 디바운스와 "같은 근거 재사용 금지"에 쓴다 */
   lastFired: Partial<Record<MomentType, number>>;
+  /** 마지막 에이전트 응답 스트리밍이 끝난 시각(chatBusy true→false), 0이면 없음 */
+  answerDoneAt?: number;
+  /** 순간별 마지막 칩 표시 시각. 다음 턴 제안 우선순위는 "실제로 칩이 뜬" 다른 순간만 본다 */
+  lastShown?: Partial<Record<MomentType, number>>;
+  /** 응답 스트리밍 구간들(최근 것 몇 개). end가 null이면 지금 스트리밍 중 */
+  busyPeriods?: { start: number; end: number | null }[];
+  /** 지금 화면의 마지막 에이전트 응답 식별자(새 응답이면 바뀜) */
+  answerKey?: string | null;
+  /** 다음 턴 제안 후보가 이미 나온 응답 식별자 */
+  nextTurnUsedKey?: string | null;
 }
 
 export interface RuleHit {
@@ -79,6 +98,8 @@ export interface DetectOutput {
   hits: RuleHit[];
   partials: RulePartial[];
   progress: Record<MomentType, number>;
+  /** 다음 턴 제안이 조건을 채웠지만 다른 룰에 밀림. 엔진은 이 응답의 다음 턴 제안 자격을 소진한다 */
+  nextTurnSuppressed: boolean;
 }
 
 const sec = (ms: number) => `${(ms / 1000).toFixed(1)}초`;
@@ -86,7 +107,17 @@ const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
 const isAnswerTarget = (t: unknown) => typeof t === 'string' && (t.startsWith('para:') || t.startsWith('product:'));
 const isDecisionTarget = (t: unknown) => typeof t === 'string' && (t.startsWith('add:') || t === 'checkout');
 const none = (type: MomentType): RuleEval => ({ type, progress: 0 });
-const PRICE_RE = /\d{1,3}(?:,\d{3})+\s*원|\d+\s*만\s*원/;
+const PRICE_RE = /\d{1,3}(?:,\d{3})+\s*원|\d{4,}\s*원|\d+\s*만\s*(?:\d+\s*천\s*)?원/;
+
+/** t가 스트리밍 중이거나 스트리밍 종료 후 BUSY_SETTLE_MS 안인지 */
+export function inBusyWindow(input: DetectInput, t: number): boolean {
+  return (input.busyPeriods ?? []).some((p) => t >= p.start && (p.end === null || t <= p.end + BUSY_SETTLE_MS));
+}
+
+/** 커서 신호 중 스트리밍 구간 밖에서 난 것만(근거 집계용). 수집은 그대로, 집계에서만 뺀다 */
+function cursorEvidence(input: DetectInput, since: number): Signal[] {
+  return input.signals.filter((s) => s.t > since && s.kind === 'cursor' && !inBusyWindow(input, s.t));
+}
 
 /** 에이전트가 이미 상품을 다뤘는지: 가격이 든 assistant 턴, 또는 화면의 상품 카드 */
 export function agentRecommended(input: DetectInput): boolean {
@@ -113,7 +144,9 @@ function labelOf(label: unknown, target: unknown) {
 export function ruleAmbiguous(input: DetectInput): RuleEval {
   const type: MomentType = 'ambiguous_request';
   const { now, draft, settings, chatContext } = input;
-  const assistantCount = chatContext.filter((c) => c.role === 'assistant').length;
+  const assistantCount = Math.max(chatContext.filter((c) => c.role === 'assistant').length, input.multiProduct.assistantMessages ?? 0);
+  // 응답 생성 중(과 직후)에는 요청이 이미 나간 상태라 요구 모호가 아니다
+  if (inBusyWindow(input, now)) return none(type);
   // 요구 모호는 추천 전에만. 추천 뒤의 빈 입력창 무입력은 비교 망설임에 가깝다(여기서는 무시).
   if (assistantCount > 1 || agentRecommended(input) || !draft.focused || debounced(input, type)) return none(type);
 
@@ -185,9 +218,9 @@ export function ruleComparison(input: DetectInput): RuleEval {
   const { now, multiProduct } = input;
   if (!multiProduct.multi || debounced(input, type)) return none(type);
   const since = Math.max(now - COMPARISON_WINDOW_MS, input.lastFired[type] ?? 0);
-  const recent = input.signals.filter((s) => s.t > since && s.kind === 'cursor');
+  const recent = cursorEvidence(input, since);
 
-  // 근거 4종, 각각 0..1. 1이면 그 근거 충족.
+  // 주 근거 3종(왕복·재방문·가격 선택), 각각 0..1. 하나라도 1이면 발화. 스크롤 역주행은 보조(점수·진행도 가산만).
   const features: { name: string; value: number; line: string; sig: Signal }[] = [];
 
   const osc = recent
@@ -196,7 +229,7 @@ export function ruleComparison(input: DetectInput): RuleEval {
   if (osc) {
     features.push({
       name: '왕복',
-      value: Math.min(1, Number(osc.data.count) / 3),
+      value: Math.min(1, Number(osc.data.count) / OSC_MIN),
       line: `${labelOf(osc.data.aLabel, osc.data.a)}·${labelOf(osc.data.bLabel, osc.data.b)} 사이 왕복 ${Number(osc.data.count)}회`,
       sig: osc,
     });
@@ -209,20 +242,21 @@ export function ruleComparison(input: DetectInput): RuleEval {
     const visits = Number(revisit.data.visits);
     features.push({
       name: '재체류',
-      value: Math.min(1, visits / 2),
+      // 한 번 체류(읽는 중)는 0.6: prefetch만 시작하고, 다시 읽으면(visits 2) 확정
+      value: visits >= 2 ? 1 : 0.6,
       line: visits >= 2 ? `${labelOf(revisit.data.label, revisit.data.target)} 다시 읽음 ${visits}회` : `${labelOf(revisit.data.label, revisit.data.target)} 체류`,
       sig: revisit,
     });
   }
   const scroll = recent.filter((s) => s.type === 'scroll_reverse' && Number(s.data.count) >= 1).pop();
-  if (scroll) features.push({ name: '역주행', value: 1, line: `스크롤 역주행 ${Number(scroll.data.count)}회`, sig: scroll });
+  const scrollLine = scroll ? `스크롤 역주행 ${Number(scroll.data.count)}회` : null;
   const price = recent.filter((s) => s.type === 'select' && s.data.price === true).pop();
   if (price) features.push({ name: '가격 선택', value: 1, line: `"${String(price.data.text).slice(0, 20)}" 선택`, sig: price });
 
   const full = features.filter((f) => f.value >= 1);
   const rule = features.some((f) => f.name === '가격 선택') ? '긴 응답 다시 읽기 + 가격 선택' : '여러 상품 응답 다시 읽기';
 
-  if (full.length >= 2) {
+  if (full.length >= 1) {
     const productIds = new Set(multiProduct.productIds);
     for (const f of full) {
       for (const k of ['a', 'b', 'target'] as const) {
@@ -235,26 +269,25 @@ export function ruleComparison(input: DetectInput): RuleEval {
       progress: 1,
       hit: {
         type,
-        score: clamp01(0.45 + 0.15 * full.length),
+        score: clamp01(0.5 + 0.12 * full.length + (scroll ? SCROLL_BONUS : 0)),
         rule,
-        signalsSummary: full.map((f) => f.line),
-        signals: full.map((f) => f.sig),
+        signalsSummary: [...full.map((f) => f.line), ...(scrollLine ? [scrollLine] : [])],
+        signals: [...full.map((f) => f.sig), ...(scroll ? [scroll] : [])],
         context: { productIds: [...productIds], messageId: multiProduct.messageId ?? undefined },
       },
     };
   }
-  if (!features.length) return none(type);
-  // 진행도 = 가장 강한 근거 두 개의 평균(2가지 충족이면 1)
-  const top = features.map((f) => f.value).sort((a, b) => b - a);
-  const progress = ((top[0] ?? 0) + (top[1] ?? 0)) / 2;
+  if (!features.length && !scroll) return none(type);
+  // 진행도 = 가장 강한 주 근거 + 역주행 보너스. 역주행만으로는 1에 닿지 않는다
+  const progress = Math.min(0.99, Math.max(0, ...features.map((f) => f.value)) + (scroll ? SCROLL_BONUS : 0));
   return {
     type,
     progress,
     partial: {
       type, progress, rule,
-      have: features.map((f) => (f.value >= 1 ? f.name : `${f.name} ${f.value.toFixed(2)}`)),
-      need: '왕복 3회·재체류 2회·역주행·가격 선택 중 2가지 이상',
-      signalsSummary: features.map((f) => f.line),
+      have: [...features.map((f) => `${f.name} ${f.value.toFixed(2)}`), ...(scroll ? ['역주행(보조)'] : [])],
+      need: `왕복 ${OSC_MIN}회·재방문 2회·가격 선택 중 하나(역주행은 보조)`,
+      signalsSummary: [...features.map((f) => f.line), ...(scrollLine ? [scrollLine] : [])],
     },
   };
 }
@@ -266,16 +299,17 @@ export function rulePreDecision(input: DetectInput): RuleEval {
   if (debounced(input, type)) return none(type);
   const since = Math.max(now - DECISION_WINDOW_MS, input.lastFired[type] ?? 0, lastDecisionClickAt);
 
-  const dwell = input.signals
-    .filter((s) => s.t > since && s.type === 'dwell' && isDecisionTarget(s.data.target) && Number(s.data.ms) >= settings.dwellMs)
+  const dwell = cursorEvidence(input, since)
+    .filter((s) => s.type === 'dwell' && isDecisionTarget(s.data.target) && Number(s.data.ms) >= settings.dwellMs)
     .pop();
-  const brow = nearDecision
+  const brow = nearDecision && !inBusyWindow(input, now)
     ? input.signals.filter((s) => s.t > since && s.type === 'brow' && Number(s.data.value) >= BROW_MIN).pop()
     : undefined;
 
   if (!dwell && !brow) {
-    const nearMs = nearDecision && nearDecision.since > lastDecisionClickAt && nearDecision.since > (input.lastFired[type] ?? 0)
-      ? now - nearDecision.since
+    // 스트리밍 중·직후에는 버튼이 커서 밑으로 밀려 온 것일 수 있어 근처 체류를 세지 않는다
+    const nearMs = nearDecision && !inBusyWindow(input, now) && nearDecision.since > lastDecisionClickAt && nearDecision.since > (input.lastFired[type] ?? 0)
+      ? now - Math.max(nearDecision.since, busySettledAt(input))
       : 0;
     if (!nearDecision || nearMs <= 0) return none(type);
     const progress = Math.min(0.99, nearMs / settings.dwellMs);
@@ -319,16 +353,59 @@ export function rulePreDecision(input: DetectInput): RuleEval {
   };
 }
 
-/** 세 룰을 모두 돌린다. 여러 개가 동시에 통과하면 점수 순. */
-export function detect(input: DetectInput): DetectOutput {
-  const evals = [ruleAmbiguous(input), ruleComparison(input), rulePreDecision(input)];
+function busySettledAt(input: DetectInput) {
+  const ends = (input.busyPeriods ?? []).map((p) => (p.end === null ? Infinity : p.end + BUSY_SETTLE_MS));
+  return ends.length ? Math.max(...ends) : 0;
+}
+
+// ---------- 룰 4: 다음 턴 제안 ----------
+const OTHER_TYPES: MomentType[] = ['ambiguous_request', 'comparison_hesitation', 'pre_decision'];
+
+export function ruleNextTurn(input: DetectInput): RuleEval {
+  const type: MomentType = 'next_turn';
+  const { now, draft } = input;
+  const doneAt = input.answerDoneAt ?? 0;
+  if (!doneAt || debounced(input, type)) return none(type);
+  // 응답 하나당 후보 최대 1번(칩이 떴든 보류됐든)
+  if (input.answerKey != null && input.answerKey === input.nextTurnUsedKey) return none(type);
+  // 응답 하나에 한 번만
+  if ((input.lastFired[type] ?? 0) >= doneAt) return none(type);
+  // 응답 뒤 다른 순간의 칩이 이미 떴으면 그쪽이 이 응답에 대한 개입이다(게이트에 걸려 안 뜬 후보는 제외)
+  if (OTHER_TYPES.some((t) => (input.lastShown?.[t] ?? 0) >= doneAt)) return none(type);
+  if (!input.chatContext.some((c) => c.role === 'assistant')) return none(type);
+  // 응답 뒤 입력이나 전송이 있었으면 사용자가 이미 다음 턴을 시작했다
+  if (draft.lastInputAt >= doneAt || draft.text.trim()) return none(type);
+  if (input.signals.some((s) => s.type === 'message_sent' && s.t >= doneAt)) return none(type);
+
+  const idle = now - doneAt;
+  const progress = Math.min(1, idle / NEXT_TURN_IDLE_MS);
+  const summary = [`응답이 끝난 뒤 ${sec(idle)} 동안 입력 없음`];
+  if (draft.focused) summary.push('입력창에 포커스 중');
+  const rule = '응답 뒤 무입력';
+  if (progress >= 1) {
+    return { type, progress: 1, hit: { type, score: 0.5, rule, signalsSummary: summary, signals: [] } };
+  }
   return {
-    hits: evals.flatMap((e) => (e.hit ? [e.hit] : [])).sort((a, b) => b.score - a.score),
+    type,
+    progress,
+    partial: { type, progress, rule, have: [`응답 뒤 ${sec(idle)}`], need: `응답 뒤 ${sec(NEXT_TURN_IDLE_MS)} 무입력`, signalsSummary: summary },
+  };
+}
+
+/** 네 룰을 모두 돌린다. 여러 개가 동시에 통과하면 점수 순, 다음 턴 제안은 다른 룰이 없을 때만. */
+export function detect(input: DetectInput): DetectOutput {
+  const evals = [ruleAmbiguous(input), ruleComparison(input), rulePreDecision(input), ruleNextTurn(input)];
+  const others = evals.slice(0, 3).flatMap((e) => (e.hit ? [e.hit] : [])).sort((a, b) => b.score - a.score);
+  const next = evals[3].hit;
+  return {
+    hits: others.length ? others : next ? [next] : [],
+    nextTurnSuppressed: !!next && others.length > 0,
     partials: evals.flatMap((e) => (e.partial ? [e.partial] : [])),
     progress: {
       ambiguous_request: evals[0].progress,
       comparison_hesitation: evals[1].progress,
       pre_decision: evals[2].progress,
+      next_turn: others.length ? 0 : evals[3].progress,
     },
   };
 }

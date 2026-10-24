@@ -34,10 +34,18 @@ export interface ShowProductsOutput {
   note?: string;
 }
 
-export type AddToCartOutput = { ok: true; product: Product } | { ok: false; error: string };
+export type AddToCartOutput = { ok: true; product: Product; alreadyInCart?: boolean } | { ok: false; error: string };
 
 export type CheckoutOutput =
-  | { ok: true; orderId: string; total: number; items: { id: string; name: string; price: number }[] }
+  | {
+      ok: true;
+      orderId: string;
+      total: number;
+      budget: number;
+      overBudget: boolean;
+      overBy: number; // 초과액(원), 초과 아니면 0
+      items: { id: string; name: string; price: number }[];
+    }
   | { ok: false; error: string };
 
 export type ChatTools = {
@@ -61,10 +69,5 @@ export type ChatTools = {
 
 export type ChatUIMessage = UIMessage<ChatMetadata, UIDataTypes, ChatTools>;
 
-/** 클라이언트 → 서버 요청 body (DefaultChatTransport가 messages와 합쳐 보냄) */
-export interface ChatRequestBody {
-  messages: ChatUIMessage[];
-  cart?: string[];
-}
 
 export const POIN_PREFIX = '[poin 레이어 지시]';

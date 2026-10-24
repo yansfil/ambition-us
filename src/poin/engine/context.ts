@@ -1,8 +1,8 @@
 // 화면(DOM)에서 순간 감지와 추론에 필요한 맥락을 뽑는다.
 import type { MultiProductInfo } from '../moments/detector';
 
-const PRICE_RE = /\d{1,3}(?:,\d{3})+\s*원|\d+\s*만\s*원/g;
-const HAS_PRICE = /\d{1,3}(?:,\d{3})+\s*원|\d+\s*만\s*원/;
+const PRICE_RE = /\d{1,3}(?:,\d{3})+\s*원|\d{4,}\s*원|\d+\s*만\s*(?:\d+\s*천\s*)?원/g;
+const HAS_PRICE = /\d{1,3}(?:,\d{3})+\s*원|\d{4,}\s*원|\d+\s*만\s*(?:\d+\s*천\s*)?원/;
 const squash = (s: string) => s.replace(/\s+/g, ' ').trim();
 
 function lastMessage(): HTMLElement | null {
@@ -15,12 +15,13 @@ const productId = (el: Element) => (el.getAttribute('data-poin-target') ?? '').s
 /** 최근 에이전트 응답이 상품 여럿(카드 2개 이상 또는 가격 2개 이상)을 다루는지 */
 export function multiProductInfo(): MultiProductInfo {
   const anyProductsShown = !!document.querySelector('[data-poin-target^="product:"]');
+  const assistantMessages = document.querySelectorAll('[data-poin-target^="msg:"]').length;
   const msg = lastMessage();
-  if (!msg) return { messageId: null, productIds: [], multi: false, anyProductsShown };
+  if (!msg) return { messageId: null, productIds: [], multi: false, anyProductsShown, assistantMessages };
   const messageId = (msg.getAttribute('data-poin-target') ?? '').slice('msg:'.length);
   const ids = [...new Set(Array.from(msg.querySelectorAll('[data-poin-target^="product:"]')).map(productId))];
   const prices = new Set(squash(msg.innerText || msg.textContent || '').match(PRICE_RE) ?? []);
-  return { messageId, productIds: ids, multi: ids.length >= 2 || prices.size >= 2, anyProductsShown };
+  return { messageId, productIds: ids, multi: ids.length >= 2 || prices.size >= 2, anyProductsShown, assistantMessages };
 }
 
 /** 화면에 있는 상품 요약 한 줄들(LLM 입력용) */

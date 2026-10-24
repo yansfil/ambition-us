@@ -1,7 +1,8 @@
 // 클라이언트 구조화 로거. 정상/비정상 동작을 모두 남겨 나중에 재구성할 수 있게 한다.
 // - 콘솔: [poin:카테고리] 메시지
 // - 메모리 링버퍼: 로그 패널 "시스템" 필터와 세션 JSON 내보내기에 사용
-// - 서버: 2초마다 /api/log 로 묶어 보냄 → logs/poin-YYYYMMDD.jsonl (서버 로그와 같은 파일)
+// - 개발: 2초마다 /api/log 로 묶어 보냄 → logs/poin-YYYYMMDD.jsonl (서버 로그와 같은 파일)
+// - 프로덕션: 서버로 보내지 않고 sessionStorage에만 남김(탭을 닫으면 사라짐)
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 export type LogCategory =
@@ -22,6 +23,9 @@ const buffer: LogEntry[] = [];
 const outbox: LogEntry[] = [];
 const listeners = new Set<(e: LogEntry) => void>();
 const isBrowser = typeof window !== 'undefined';
+const isDev = process.env.NODE_ENV === 'development';
+const STORE_KEY = 'poin-log-v1';
+const STORE_MAX = 500;
 
 // 디버그 신호는 양이 많아 서버로는 보내지 않는다(메모리에는 남김).
 const shouldShip = (e: LogEntry) => e.level !== 'debug';
@@ -70,7 +74,29 @@ export const log = {
   },
 };
 
+function persist() {
+  try {
+    sessionStorage.setItem(STORE_KEY, JSON.stringify(buffer.slice(-STORE_MAX)));
+  } catch {
+    // 용량 초과나 저장 차단이면 메모리에만 남는다.
+  }
+}
+
+function restore() {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(STORE_KEY) ?? '[]') as LogEntry[];
+    if (Array.isArray(saved)) buffer.unshift(...saved.slice(-STORE_MAX));
+  } catch {
+    // 깨진 값은 무시
+  }
+}
+
 async function flush() {
+  if (!isDev) {
+    outbox.length = 0;
+    persist();
+    return;
+  }
   if (!outbox.length) return;
   const batch = outbox.splice(0, outbox.length);
   try {
@@ -85,6 +111,7 @@ let installed = false;
 export function installClientLogging(sessionId: string) {
   if (!isBrowser || installed) return;
   installed = true;
+  if (!isDev) restore();
   window.addEventListener('error', (ev) => emit('error', 'runtime', ev.message, { file: ev.filename, line: ev.lineno, col: ev.colno, stack: ev.error?.stack }));
   window.addEventListener('unhandledrejection', (ev) => emit('error', 'runtime', 'unhandled rejection', safe(ev.reason)));
   window.addEventListener('pagehide', () => void flush());
