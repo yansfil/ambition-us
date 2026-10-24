@@ -91,9 +91,13 @@ struct GazeLayer: View {
 }
 
 /// 사용자 시선 위치를 보여주는 Liquid Glass 둥근 사각형.
+/// 아래 내용이 그대로 읽히도록 유리 본체는 옅게 두고 테두리로 영역을 드러낸다.
 struct GazeGlassView: View {
     let cornerRadius: CGFloat
     let useLiquidGlass: Bool
+
+    /// 유리 본체 불투명도. 높이면 뒤 내용이 흐려진다.
+    static let bodyOpacity = 0.35
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
@@ -104,11 +108,12 @@ struct GazeGlassView: View {
                 shape.fill(.ultraThinMaterial)
             }
         }
-        .overlay(shape.strokeBorder(Color.white.opacity(0.5), lineWidth: 1))
+        .opacity(Self.bodyOpacity)
+        .overlay(shape.strokeBorder(Color.white.opacity(0.35), lineWidth: 1))
         .overlay(
             // 위쪽 가장자리 하이라이트로 유리 두께감을 준다.
             shape.strokeBorder(
-                LinearGradient(colors: [Color.white.opacity(0.55), .clear], startPoint: .top, endPoint: .center),
+                LinearGradient(colors: [Color.white.opacity(0.3), .clear], startPoint: .top, endPoint: .center),
                 lineWidth: 1.5)
         )
     }

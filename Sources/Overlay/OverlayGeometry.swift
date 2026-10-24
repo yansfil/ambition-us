@@ -110,7 +110,7 @@ public enum OverlayGeometry {
     // MARK: - 시선 유리
 
     public static let gazeGlassMinSize = CGSize(width: 76, height: 52)
-    public static let gazeGlassMaxSize = CGSize(width: 420, height: 280)
+    public static let gazeGlassMaxSize = CGSize(width: 260, height: 170)
 
     /// 추정 오차 반경으로 유리 크기를 정한다. 가로로 조금 긴 둥근 사각형(텍스트 줄을 덮기 좋게).
     public static func gazeGlassSize(uncertaintyRadius: Double) -> CGSize {
