@@ -18,6 +18,9 @@ func appCoreChecks() async {
     await moveFlowChecks()
     print("[AppCore/받아쓰기: 원장 단일 기준]")
     await dictationFlowChecks()
+    print("[AppCore/음성 대답으로 승인]")
+    voiceReplyClassifierChecks()
+    await voiceApprovalChecks()
     print("[AppCore/비상 정지]")
     await killSwitchChecks()
     print("[AppCore/선제 제안: 머뭇거림 + 응시 단서 → 말풍선]")
@@ -381,6 +384,51 @@ private func moveFlowChecks() async {
     try? await Task.sleep(for: .milliseconds(150))
     let afterReplay = await env.executor.executed.count
     check(afterReplay == 1 && env.agent.overlayState.pendingApproval == nil, "같은 revision 재전송 → 중복 제안 없음")
+    await env.agent.shutdown()
+}
+
+// MARK: - 음성 대답
+
+private func voiceReplyClassifierChecks() {
+    for text in ["응.", "네", "해줘", "그래 해줘", "실행", "OK"] {
+        check(VoiceReply.classify(text) == .accept, "수락으로 읽음: \(text)")
+    }
+    for text in ["아니", "아니야.", "취소해", "하지 마"] {
+        check(VoiceReply.classify(text) == .reject, "거절로 읽음: \(text)")
+    }
+    for text in ["안녕하세요 반갑습니다 오늘 회의는 세 시입니다", "이거 저기로 옮겨줘", "어제 보낸 메일"] {
+        check(VoiceReply.classify(text) == nil, "대답이 아님: \(text)")
+    }
+}
+
+@MainActor
+private func voiceApprovalChecks() async {
+    let env = AppEnv(elements: [fileA, folderB, memo])
+    await env.agent.start()
+    let id = UUID()
+    await env.feed(fixation(at: fileA.center, from: 0.4, to: 1.32))
+    await env.feed(saccade(from: fileA.center, to: folderB.center, from: 1.32, to: 1.36))
+    await env.feed(fixation(at: folderB.center, from: 1.36, to: 2.8))
+    let words = [word("이거를", 1.0, 1.3), word("이쪽으로", 1.8, 2.2), word("옮겨줘", 2.3, 2.7)]
+    env.clock.set(2.9)
+    env.say(transcript(id, 1, words, final: true))
+    let gotApproval = await eventually { env.agent.overlayState.pendingApproval != nil }
+    check(gotApproval, "이동 제안 승인 대기")
+    guard env.agent.overlayState.pendingApproval != nil else { return }
+
+    // 제안 만료(4초)가 지나도 승인 대기는 유지된다.
+    env.clock.set(9.0)
+    // 메모 입력칸을 보며 "응."이라고 대답해도 받아쓰기로 새지 않고 승인으로 처리된다.
+    await env.feed(fixation(at: memo.center, from: 8.0, to: 9.0))
+    let reply = UUID()
+    env.say(transcript(reply, 1, [word("응", 8.6, 8.8)], text: "응.", final: false))
+    env.say(transcript(reply, 2, [word("응", 8.6, 8.8)], text: "응.", final: true))
+    let executed = await eventually { await env.executor.executed.count == 1 }
+    check(executed, "음성 \"응\" → 승인 → 실행기 한 번 호출")
+    try? await Task.sleep(for: .milliseconds(150))
+    let calls = await env.executor.executed
+    check(calls.count == 1, "대답이 받아쓰기·명령으로 새지 않음 (실행 \(calls.count)회)")
+    if case .move = calls.first?.action {} else { check(false, "실행된 행동이 move가 아님") }
     await env.agent.shutdown()
 }
 

@@ -11,7 +11,7 @@ enum DiagnosticsLog {
 
     static func write(_ message: String) {
         logger.notice("\(message, privacy: .public)")
-        let line = "\(Date().formatted(.iso8601.time(includingFractionalSeconds: true))) \(message)\n"
+        let line = "\(Date().formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits).second(.twoDigits).secondFraction(.fractional(3)))) \(message)\n"
         queue.async {
             let manager = FileManager.default
             try? manager.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)

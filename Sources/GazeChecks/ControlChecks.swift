@@ -121,8 +121,12 @@ private func policyTableChecks() {
     let sameElementNewToken = uiTarget("field-reissued")
     check(decide(proposal(.typeText(target: sameElementNewToken, text: "hi"))) == .execute,
           "토큰이 달라도 같은 pid·역할·위치면 같은 요소")
-    check(isApproval(decide(proposal(.press(target: uiTarget("ok", title: "OK", editable: false))))),
-          "low press도 기본은 requireApproval")
+    check(decide(proposal(.press(target: uiTarget("ok", title: "OK", editable: false)))) == .execute,
+          "민감하지 않은 low press → execute")
+    check(isApproval(decide(proposal(.press(target: uiTarget("send", title: "보내기", editable: false))))),
+          "보내기 버튼 press → requireApproval")
+    check(isApproval(decide(proposal(.press(target: uiTarget("ok", title: "OK", editable: false)), risk: .medium))),
+          "medium press → requireApproval")
     check(isApproval(decide(proposal(.setValue(target: field, value: "x")))), "setValue → requireApproval")
 
     // move

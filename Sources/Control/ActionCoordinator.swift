@@ -213,8 +213,8 @@ public actor ActionCoordinator {
             guard now < proposal.expiresAt else {
                 return notExecuted(proposal, reason: "Proposal expired", skip: Self.earlierTimeoutReason)
             }
-            let remaining = Duration.clampedNanoseconds(proposal.expiresAt.elapsed(since: now))
-            let timeout = min(approvalTimeout, remaining)
+            // 사용자가 읽고 답할 시간을 준다. 제안 만료(판단 시점의 신선도)는 승인 전까지만 본다.
+            let timeout = approvalTimeout
             let request = ApprovalRequest(proposal: proposal, reason: reason, requestedAt: now,
                                           deadline: now.adding(timeout.clampedNanoseconds))
             emit(proposal, .proposed, reason: reason)
@@ -233,10 +233,7 @@ public actor ActionCoordinator {
             if let reason = haltReason(since: epoch) {
                 return notExecuted(proposal, reason: reason, skip: "Not executed: \(reason)")
             }
-            guard clock.now() < proposal.expiresAt else {
-                return notExecuted(proposal, reason: "Proposal expired while awaiting approval",
-                                   skip: Self.earlierTimeoutReason)
-            }
+            // 승인 뒤에는 만료를 다시 보지 않는다. 대상이 바뀌었는지는 실행기가 실행 직전에 다시 확인한다.
         }
 
         emit(proposal, .started, reason: nil)

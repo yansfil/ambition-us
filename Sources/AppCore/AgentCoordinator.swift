@@ -76,6 +76,7 @@ public final class AgentCoordinator {
     private let relay: ProposalRelay
     private var pumps: [Task<Void, Never>] = []
     private var evaluations: [UUID: (token: UUID, task: Task<Void, Never>)] = [:]
+    private var consumedReplies: Set<UUID> = []
     private var tracked: [UUID: ActionProposal] = [:]
     private var activeProposalID: UUID?
     private var idleTask: Task<Void, Never>?
@@ -278,6 +279,8 @@ public final class AgentCoordinator {
         onLog?("전사 r\(update.revision)\(update.isFinal ? " final" : "") \"\(update.text)\" stable=\"\(update.stablePrefix)\" words=[\(words)]")
         guard mode == .running else { return }
         let id = update.utteranceID
+        if consumedReplies.contains(id) { return }
+        if handleVoiceReply(update) { return }
         let previous = evaluations[id]?.task
         // 이전 revision의 평가는 더 이상 의미가 없다(모델 호출 대기 중이면 끊는다).
         previous?.cancel()
@@ -306,6 +309,35 @@ public final class AgentCoordinator {
             self?.finishEvaluation(id, token: token)
         }
         evaluations[id] = (token, task)
+    }
+
+    /// 승인 대기나 제안 말풍선이 떠 있을 때 "응/네/해줘"·"아니/취소" 같은 대답을 처리한다.
+    /// 처리한 발화는 이후 revision까지 소비해서 받아쓰기·명령으로 흘러가지 않게 한다.
+    private func handleVoiceReply(_ update: TranscriptUpdate) -> Bool {
+        let pending = overlayState.pendingApproval
+        let suggestion = overlayState.suggestion
+        guard pending != nil || suggestion != nil else { return false }
+        let text = update.stablePrefix.isEmpty ? update.text : update.stablePrefix
+        guard let reply = VoiceReply.classify(text) else {
+            // 대답일 수 있는 짧은 말이 아직 확정 전이면 판단을 미룬다(받아쓰기로 새지 않게).
+            if !update.isFinal, VoiceReply.normalize(update.text).count <= 4 { return true }
+            return false
+        }
+        // 확정 전 revision이라도 안정 구간이 대답과 일치하면 바로 반영한다.
+        guard update.isFinal || !update.stablePrefix.isEmpty || VoiceReply.classify(update.text) != nil else { return true }
+        consumedReplies.insert(update.utteranceID)
+        if consumedReplies.count > 64 { consumedReplies.removeFirst() }
+        evaluations[update.utteranceID]?.task.cancel()
+        evaluations[update.utteranceID] = nil
+        let accepted = reply == .accept
+        if let pending {
+            onLog?("음성 대답 \(accepted ? "수락" : "거절"): \"\(update.text)\"")
+            Task { await respond(to: .approval(pending), accepted: accepted) }
+        } else if let suggestion {
+            onLog?("제안에 음성 대답 \(accepted ? "수락" : "거절"): \"\(update.text)\"")
+            Task { await respond(to: .suggestion(suggestion), accepted: accepted) }
+        }
+        return true
     }
 
     private func finishEvaluation(_ id: UUID, token: UUID) {
@@ -418,11 +450,17 @@ public final class AgentCoordinator {
 
     /// 이동은 출발지와 목적지를 함께 감싼다. 나머지는 대상 프레임.
     static func regionFrame(for action: AgentAction) -> CGRect {
+        let frame: CGRect
         switch action {
-        case .move(let source, let destination): return source.frame.union(destination.frame)
-        default: return action.primaryTarget.frame
+        case .move(let source, let destination): frame = source.frame.union(destination.frame)
+        default: frame = action.primaryTarget.frame
         }
+        return frame.insetBy(dx: -max(0, (minimumRegionSize.width - frame.width) / 2),
+                             dy: -max(0, (minimumRegionSize.height - frame.height) / 2))
     }
+
+    /// 연두색 영역이 너무 작아 보이지 않는 것을 막는 최소 크기.
+    static let minimumRegionSize = CGSize(width: 64, height: 36)
 
     // MARK: 모드·그리기
 

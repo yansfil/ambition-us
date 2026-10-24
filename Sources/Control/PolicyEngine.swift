@@ -136,7 +136,11 @@ public enum PolicyRules {
             return .execute
 
         case .press:
-            return .requireApproval(reason: "Pressing a control requires confirmation")
+            // 민감 키워드(보내기·삭제·결제 등)는 위에서 이미 승인으로 걸렀다. 일반 클릭은 입력·이동처럼 바로 실행한다.
+            guard proposal.risk == .low else {
+                return .requireApproval(reason: "Pressing at \(proposal.risk.rawValue) risk requires confirmation")
+            }
+            return .execute
 
         case .setValue(let target, _):
             // 원장 교정은 에이전트가 이 발화로 넣은 범위 안쪽만 바꾼다(원장이 범위를 보장하고, 위에서 발급 여부를 확인했다).
