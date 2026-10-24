@@ -151,7 +151,7 @@ private func policyTableChecks() {
 
 private func policyEngineChecks() async {
     let safety = AgentSafetySwitch()
-    let engine = PolicyEngine(safety: safety)
+    let engine = PolicyEngine(configuration: PolicyConfiguration(requireApprovals: true), safety: safety)
     let field = uiTarget()
     let p = proposal(.typeText(target: field, text: "hi"))
 
@@ -438,7 +438,7 @@ private struct Harness {
         executor = FakeExecutor(clock: clock, failing: failing)
         field = uiTarget()
         let safety = AgentSafetySwitch()
-        let engine = PolicyEngine(safety: safety, dictationVerifier: ledger)
+        let engine = PolicyEngine(configuration: PolicyConfiguration(requireApprovals: true), safety: safety, dictationVerifier: ledger)
         await engine.updateGazeFocus(field, at: at(0.5))
         coordinator = ActionCoordinator(policy: engine, executor: executor, clock: clock, safety: safety,
                                         approvalTimeout: approvalTimeout)
@@ -643,7 +643,7 @@ private func originPolicyChecks() async {
 
     // PolicyEngine + 원장: 대기 중인 편집만 확인된다.
     let ledger = DictationLedger()
-    let engine = PolicyEngine(safety: AgentSafetySwitch(), dictationVerifier: ledger)
+    let engine = PolicyEngine(configuration: PolicyConfiguration(requireApprovals: true), safety: AgentSafetySwitch(), dictationVerifier: ledger)
     let id = UUID()
     guard let first = delta(await ledger.plan(for: update(id, 1, stable: "세시"), target: field, snapshot: snap("", caret: 0)))
     else { check(false, "원장 apply"); return }
@@ -664,6 +664,8 @@ private func originPolicyChecks() async {
     await engine.updateGazeFocus(nil, at: at(1))
     await expect(await engine.decide(correction, now: at(1)) == .execute, "대기 중인 원장 교정 → 시선 없이도 execute")
     await expect(isReject(await PolicyEngine().decide(correction, now: at(1))), "원장 확인기가 없으면 원장 편집 reject")
+    let risky = proposal(.press(target: uiTarget("send", title: "보내기", editable: false)), risk: .high)
+    await expect(await PolicyEngine().decide(risky, now: at(0.5)) == .execute, "기본 설정은 승인 없이 바로 실행")
 }
 
 private actor SlowExecutor: ActionExecuting {
@@ -695,7 +697,7 @@ private func coordinatorIntegrationChecks() async {
         let clock = FakeClock(at(1))
         let field = uiTarget()
         let safety = AgentSafetySwitch()
-        let engine = PolicyEngine(safety: safety)
+        let engine = PolicyEngine(configuration: PolicyConfiguration(requireApprovals: true), safety: safety)
         await engine.updateGazeFocus(field, at: at(0.5))
         let slow = SlowExecutor(delay: .seconds(5), clock: clock)
         let coordinator = ActionCoordinator(policy: engine, executor: slow, clock: clock, safety: safety,
@@ -715,7 +717,7 @@ private func coordinatorIntegrationChecks() async {
         let clock = FakeClock(at(1))
         let field = uiTarget()
         let safety = AgentSafetySwitch()
-        let engine = PolicyEngine(safety: safety)
+        let engine = PolicyEngine(configuration: PolicyConfiguration(requireApprovals: true), safety: safety)
         await engine.updateGazeFocus(field, at: at(0.5))
         let slow = SlowExecutor(delay: .seconds(5), clock: clock)
         let coordinator = ActionCoordinator(policy: engine, executor: slow, clock: clock, safety: safety,

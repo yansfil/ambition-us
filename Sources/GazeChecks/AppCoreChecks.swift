@@ -177,7 +177,7 @@ private struct AppEnv {
         fuser = AttentionFuser(resolver: screen, clock: clock)
         executor = RecordingExecutor(clock: clock, field: applyToField ? field : nil)
         let safety = AgentSafetySwitch()
-        let policy = PolicyEngine(safety: safety, dictationVerifier: ledger)
+        let policy = PolicyEngine(configuration: PolicyConfiguration(requireApprovals: true), safety: safety, dictationVerifier: ledger)
         coordinator = ActionCoordinator(policy: policy, executor: executor, clock: clock, safety: safety,
                                         approvalTimeout: .seconds(10), executionTimeout: .seconds(2))
         let intent = IntentEngine(clock: clock, modelClient: nil)

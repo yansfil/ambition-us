@@ -11,6 +11,8 @@ public struct PolicyConfiguration: Sendable, Equatable {
     public var gazeFocusMaxAge: Duration
     /// 대소문자 구분 없이 부분 문자열로 찾는다. 발견되면 승인을 요구한다.
     public var sensitiveKeywords: [String]
+    /// false면 승인 요구를 건너뛰고 바로 실행한다(거부 규칙—보안 필드·만료·정지 등—은 그대로).
+    public var requireApprovals: Bool
 
     public static let defaultSensitiveKeywords = [
         "send", "delete", "purchase", "submit",
@@ -20,7 +22,9 @@ public struct PolicyConfiguration: Sendable, Equatable {
     public init(staleTargetAge: Duration = .seconds(10),
                 freshTargetAge: Duration = .seconds(3),
                 gazeFocusMaxAge: Duration = .seconds(3),
-                sensitiveKeywords: [String] = PolicyConfiguration.defaultSensitiveKeywords) {
+                sensitiveKeywords: [String] = PolicyConfiguration.defaultSensitiveKeywords,
+                requireApprovals: Bool = false) {
+        self.requireApprovals = requireApprovals
         self.staleTargetAge = staleTargetAge
         self.freshTargetAge = freshTargetAge
         self.gazeFocusMaxAge = gazeFocusMaxAge
@@ -232,6 +236,8 @@ public actor PolicyEngine: ActionAuthorizing {
         }
         var context = currentContext()
         context.verifiedDictationEdit = verified
-        return PolicyRules.evaluate(proposal, now: now, context: context, configuration: configuration)
+        let decision = PolicyRules.evaluate(proposal, now: now, context: context, configuration: configuration)
+        if case .requireApproval = decision, !configuration.requireApprovals { return .execute }
+        return decision
     }
 }
