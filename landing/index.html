@@ -1,0 +1,440 @@
+<!doctype html>
+<html lang="ko" class="no-js">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>키오 — 보면서 말하면 알아듣는 키오스크</title>
+  <meta name="description" content="키오는 손님이 말한 순간 어디를 보고 있었는지 맞춰 알아듣고, 화면을 대신 눌러 주는 AI 키오스크입니다.">
+  <meta name="theme-color" content="#070807">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23070807'/%3E%3Crect x='5' y='10' width='22' height='12' rx='6' fill='none' stroke='%23f4f4ef' stroke-width='2'/%3E%3Ccircle cx='19' cy='16' r='3.2' fill='%23BDF43A'/%3E%3C/svg%3E">
+  <script>document.documentElement.className = 'js';</script>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="styles.css">
+  <script src="demo.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main">본문으로 건너뛰기</a>
+
+  <header class="nav">
+    <a class="brand" href="#top" aria-label="키오 처음으로">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><rect x="2.5" y="7.5" width="27" height="17" rx="8.5" fill="none" stroke="currentColor" stroke-width="2.2"/><circle cx="19.5" cy="16" r="4.2" fill="#BDF43A"/></svg>
+      <span>키오</span><em>Kio</em>
+    </a>
+    <nav class="nav-links" aria-label="주요 메뉴">
+      <a href="#demo">데모</a>
+      <a href="#how">작동 방식</a>
+      <a href="#features">기능</a>
+      <a href="#retrofit">도입</a>
+    </nav>
+    <a class="btn btn-lime btn-sm" href="#demo">데모 보기</a>
+  </header>
+
+  <main id="main">
+    <!-- HERO -->
+    <section class="hero" id="top">
+      <div class="hero-grid" aria-hidden="true"></div>
+      <div class="hero-glow" aria-hidden="true"></div>
+
+      <div class="wrap hero-copy">
+        <p class="eyebrow"><span class="pulse" aria-hidden="true"></span>시선과 음성으로 주문하는 AI 키오스크</p>
+        <h1 class="hero-title"><span class="lens-word" data-text="이거">이거<span class="lens-ring" aria-hidden="true"></span></span> 하나 주세요.</h1>
+        <p class="hero-sub">점원에게 하듯, 보면서 말하면 됩니다. 키오는 손님이 말한 순간 어디를 보고 있었는지 맞춰 알아듣고, 화면을 대신 눌러 드립니다.</p>
+        <div class="hero-cta">
+          <a class="btn btn-lime" href="#demo">데모 보기
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>
+          </a>
+          <a class="btn btn-ghost" href="#how">작동 방식</a>
+        </div>
+      </div>
+
+      <!-- LIVE SIMULATION -->
+      <div class="stage wrap" id="demo">
+        <ol class="rail" aria-label="진행 단계">
+          <li><span>01</span>관찰</li>
+          <li><span>02</span>망설임 감지</li>
+          <li><span>03</span>먼저 말 걸기</li>
+          <li><span>04</span>시선과 말 연결</li>
+          <li><span>05</span>대신 누르기</li>
+          <li><span>06</span>손님 확인</li>
+        </ol>
+
+        <div class="device-col">
+          <p class="sr-only">시뮬레이션 내용: 어르신이 키오스크 앞에서 메뉴를 헤매자 키오가 먼저 말을 겁니다. 손님이 유자차를 보며 “이거 하나 따뜻한 걸로”, 아메리카노를 보며 “저거도 똑같이 하나”라고 말하면, 키오가 두 메뉴를 담고 결제는 손님이 직접 누르도록 안내합니다.</p>
+          <div class="device">
+            <div class="module" aria-hidden="true">
+              <i class="mic"></i><i class="cam"></i><i class="mic"></i><i class="led"></i>
+            </div>
+            <div class="screen" id="screen" aria-hidden="true">
+              <div class="k-ui" id="kUI">
+                <div class="k-top">
+                  <div class="k-store"><i class="k-logo"></i>카페 온기</div>
+                </div>
+                <div class="k-tabs"><span class="on">전체</span><span>커피</span><span>차</span><span>에이드</span></div>
+                <div class="k-grid" id="kGrid"></div>
+                <div class="k-hint" id="kHint"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/></svg>말로도 주문할 수 있어요</div>
+                <div class="k-cart" id="kCart">
+                  <div><small id="cartCount">담은 메뉴 없음</small><strong id="cartTotal">0원</strong></div>
+                  <span class="k-pay" id="payBtn">결제하기</span>
+                </div>
+
+                <div class="k-dim"></div>
+
+                <div class="k-sheet" id="sheet">
+                  <i class="k-grab"></i>
+                  <div class="k-sheet-head">
+                    <div><b>유자차</b><span>5,500원</span></div>
+                  </div>
+                  <p class="k-label">온도</p>
+                  <div class="k-opts"><div class="k-opt" id="optHot">따뜻하게</div><div class="k-opt" id="optIce">차갑게</div></div>
+                  <div class="k-qty"><span>수량</span><div><i>−</i><b>1</b><i>+</i></div></div>
+                  <div class="k-add" id="addBtn">담기</div>
+                </div>
+
+                <div class="k-modal" id="confirm">
+                  <div class="k-modal-card">
+                    <p class="k-modal-title">주문을 확인해 주세요</p>
+                    <ul id="confirmList"></ul>
+                    <div class="k-total"><span>합계</span><strong id="confirmTotal">0원</strong></div>
+                    <div class="k-confirm-pay" id="confirmPay">결제하기</div>
+                    <div class="k-back">다시 고르기</div>
+                  </div>
+                </div>
+
+                <div class="k-card" id="cardStep">
+                  <svg class="k-card-ill" viewBox="0 0 120 80"><rect x="10" y="8" width="100" height="62" rx="9" fill="#221A14"/><rect x="10" y="22" width="100" height="10" fill="#4A3A2E"/><rect x="22" y="44" width="22" height="15" rx="3" fill="#E7C46A"/></svg>
+                  <b>카드를 아래 투입구에<br>넣어 주세요</b>
+                  <div class="k-arrow" id="cardArrow"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></div>
+                </div>
+
+                <div class="k-done" id="done">
+                  <div class="k-check"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></div>
+                  <b>주문 완료</b>
+                  <p>주문번호</p>
+                  <strong>37</strong>
+                  <span id="doneTime"></span>
+                </div>
+
+                <div class="hes" id="hes"></div>
+                <div class="gaze" id="gaze"><div class="wave"><i></i><i></i><i></i><i></i><i></i></div></div>
+                <div class="agent idle full" id="agent"><b class="agent-tag" id="agentTag">듣는 중</b></div>
+                <div class="bubble" id="bubble"></div>
+                <div class="tap" id="tap"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="captions" id="captions"></div>
+          <div class="controls">
+            <button class="ctl" id="playBtn" type="button" aria-pressed="false">
+              <svg class="i-pause" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+              <svg class="i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12-7.5z"/></svg>
+              <span>재생</span>
+            </button>
+            <button class="ctl" id="replayBtn" type="button">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+              <span>처음부터</span>
+            </button>
+          </div>
+          <p class="stage-note">시뮬레이션 화면입니다. 실제 시선 추적·음성 인식 결과가 아닙니다.</p>
+        </div>
+
+        <aside class="log" aria-label="이벤트 로그">
+          <div class="log-head"><span class="live" aria-hidden="true"></span>EVENT STREAM</div>
+          <ol id="logList"></ol>
+        </aside>
+      </div>
+    </section>
+
+    <!-- PROBLEM -->
+    <section class="paper problem" id="problem">
+      <div class="wrap">
+        <p class="eyebrow reveal">문제</p>
+        <h2 class="reveal">키오스크는 늘었는데,<br>주문하지 못하는 사람은 그대로입니다.</h2>
+
+        <div class="stats">
+          <article class="stat reveal">
+            <p class="stat-num">20.3<em>%p</em></p>
+            <p class="stat-desc">일반 국민과 고령층의 키오스크 활동률 차이</p>
+            <div class="bars" aria-hidden="true">
+              <div class="bar"><span>일반 국민</span><i style="--v:74.5%"></i><b>74.5%</b></div>
+              <div class="bar is-old"><span>고령층</span><i style="--v:54.2%"></i><b>54.2%</b></div>
+            </div>
+            <p class="stat-src">2025 디지털정보격차 실태조사 · 과기정통부·NIA</p>
+          </article>
+          <article class="stat reveal">
+            <p class="stat-num">55.5<em>%</em></p>
+            <p class="stat-desc">키오스크를 써 본 서울 55세 이상 중 “조작이 미숙하다”고 답한 비율</p>
+            <div class="bars" aria-hidden="true">
+              <div class="bar is-old solo"><i style="--v:55.5%"></i></div>
+            </div>
+            <p class="stat-src">2025 서울시민 디지털 역량 실태조사 · 서울AI재단</p>
+          </article>
+          <article class="stat reveal">
+            <p class="stat-num">0.7<em>%</em></p>
+            <p class="stat-desc">전국 키오스크 약 53만 대 가운데 등록된 배리어프리 키오스크 비율 (3,482대)</p>
+            <div class="dots" aria-hidden="true"></div>
+            <p class="stat-src">2026년 언론 보도 기준 · 150대 중 1대꼴</p>
+          </article>
+        </div>
+
+        <p class="insight reveal">이분들은 주문을 못 하는 게 아닙니다. 점원 앞에서는 <mark>“이거 하나 주세요”</mark> 한마디면 끝납니다. 어려운 건 키오스크가 요구하는 방식입니다.</p>
+      </div>
+    </section>
+
+    <!-- HOW -->
+    <section class="how" id="how">
+      <div class="wrap">
+        <p class="eyebrow reveal">작동 방식</p>
+        <h2 class="reveal">말한 순간, 보고 있던 것.</h2>
+        <p class="lead reveal">‘이거’, ‘저거’는 단어만으로는 뜻이 없습니다. 키오는 단어마다 실제로 말한 시각을 기록하고, 그 순간 손님이 보던 메뉴와 묶습니다.</p>
+
+        <div class="tl-scroll reveal">
+          <div class="tl" role="img" aria-label="음성 단어와 시선 응시를 같은 시간축에 놓은 그림. 손님이 ‘이거’라고 말한 0.6초 무렵 유자차를 보고 있었고, ‘저거도’라고 말한 2.4초 무렵 아메리카노를 보고 있었습니다.">
+            <div class="tl-labels"><span>음성</span><span>시선</span></div>
+            <div class="tl-body">
+              <div class="tl-band" style="left:10%;width:21.56%"><em>−300ms</em><em>+150ms</em></div>
+              <div class="tl-band" style="left:62.5%;width:23.44%"><em>−300ms</em><em>+150ms</em></div>
+
+              <div class="tl-words">
+                <span class="tw" style="left:6.25%;width:5.6%">응</span>
+                <span class="tw dx" style="left:19.4%;width:7.5%">이거</span>
+                <span class="tw" style="left:28.75%;width:7.2%">하나</span>
+                <span class="tw" style="left:40.6%;width:10%">따뜻한</span>
+                <span class="tw" style="left:51.9%;width:7.5%">걸로</span>
+                <span class="tw dx" style="left:71.9%;width:9.4%">저거도</span>
+                <span class="tw" style="left:82.5%;width:8.1%">똑같이</span>
+                <span class="tw" style="left:91.9%;width:5.6%">하나</span>
+              </div>
+
+              <div class="tl-link" style="left:23.125%"></div>
+              <div class="tl-link" style="left:76.56%"></div>
+
+              <div class="tl-gaze">
+                <span class="tf" style="left:0;width:5.6%" title="아메리카노"></span>
+                <span class="tf" style="left:6.9%;width:8.1%" title="자몽에이드"></span>
+                <span class="tf hit" style="left:16.25%;width:37.5%">유자차</span>
+                <span class="tf" style="left:55.6%;width:10.6%">카페라떼</span>
+                <span class="tf hit" style="left:68.75%;width:31.25%">아메리카노</span>
+              </div>
+
+              <div class="tl-axis">
+                <span style="left:0">0.0s</span><span style="left:15.625%">0.5</span><span style="left:31.25%">1.0</span><span style="left:46.875%">1.5</span><span style="left:62.5%">2.0</span><span style="left:78.125%">2.5</span><span style="left:93.75%">3.0</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="tl-note reveal">글자가 화면에 찍힌 시각이 아니라 녹음 기준의 실제 발화 시각을 씁니다. 그 앞뒤 구간에서 가장 오래 본 메뉴에 단어를 연결합니다.</p>
+
+        <ol class="steps">
+          <li class="step reveal">
+            <span class="step-num">01</span>
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+            <h3>바라보기</h3>
+            <p>보고 있는 메뉴를 크게 보여주고 쉬운 말로 읽어 드립니다. 처음 온 손님에게 따로 보정 과정을 요구하지 않도록 설계했습니다.</p>
+          </li>
+          <li class="step reveal">
+            <span class="step-num">02</span>
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/></svg>
+            <h3>말하기</h3>
+            <p>“이거”, “저거도”를 그 순간 보던 메뉴에 연결합니다. “똑같이”처럼 앞 주문을 가리키는 말도 알아듣습니다.</p>
+          </li>
+          <li class="step reveal">
+            <span class="step-num">03</span>
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/><path d="m9 12 2 2 4-4"/></svg>
+            <h3>확인하기</h3>
+            <p>키오가 누르는 곳은 연두색 테두리로 보여 드립니다. 결제는 언제나 손님이 직접 누릅니다.</p>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- FEATURES -->
+    <section class="features" id="features">
+      <div class="wrap">
+        <p class="eyebrow reveal">기능</p>
+        <h2 class="reveal">디지털이 낯선 손님을 위한<br>여섯 가지 배려</h2>
+
+        <div class="bento">
+          <article class="card span-2 reveal">
+            <div class="viz viz-hes" aria-hidden="true">
+              <div class="m-row"><span>터치 없음</span><i class="m-bar"><i></i></i><b>6.4s</b></div>
+              <div class="m-row"><span>시선 이동</span><i class="m-dots"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></i><b>8회</b></div>
+              <div class="m-row"><span>망설임</span><i class="m-bar is-lime"><i></i></i><b>0.82</b></div>
+              <p class="m-pill">“천천히 하셔도 돼요. 보면서 말씀해 주세요.”</p>
+            </div>
+            <h3>먼저 말을 거는 키오스크</h3>
+            <p>터치 없이 오래 머물거나 시선이 헤매면 먼저 도움을 건넵니다. 익숙한 손님에게는 끼어들지 않습니다.</p>
+          </article>
+
+          <article class="card reveal">
+            <ul class="viz viz-gloss" aria-label="쉬운 말 풀이 예시">
+              <li><b>디카페인</b><span>카페인을 뺀 커피</span></li>
+              <li><b>샷 추가</b><span>커피를 더 진하게</span></li>
+              <li><b>세트 변경</b><span>음료와 함께 묶어서</span></li>
+            </ul>
+            <h3>보는 곳을 읽어주는 화면</h3>
+            <p>낯선 메뉴 이름도 쉬운 우리말로 풀어 읽어 드립니다.</p>
+          </article>
+
+          <article class="card reveal">
+            <div class="viz viz-mode" aria-hidden="true">
+              <div class="seg"><i class="seg-knob"></i><span>해줘</span><span>알려줘</span></div>
+              <div class="mode-tile"><i class="mode-rect"></i><span class="mode-hint">여기를 누르세요</span></div>
+            </div>
+            <h3>“해줘” 모드와 “알려줘” 모드</h3>
+            <p>바쁠 땐 대신 누르고, 배우고 싶을 땐 다음에 누를 곳만 짚어 드립니다.</p>
+          </article>
+
+          <article class="card span-2 reveal">
+            <div class="viz viz-staff" aria-hidden="true">
+              <div class="noti">
+                <div class="noti-head">
+                  <svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+                  <b>직원 호출 · 2번 키오스크</b><time>방금</time>
+                </div>
+                <p>유자차(따뜻하게) 1 · 아메리카노 1 담음</p>
+                <p class="noti-warn">결제 단계에서 22초째 멈춤 · 카드 방향 헷갈림</p>
+                <span class="noti-btn">가서 돕기</span>
+              </div>
+            </div>
+            <h3>상황을 함께 보내는 호출벨</h3>
+            <p>막히면 직원에게 상황을 요약해 보냅니다. 직원은 처음부터 다시 묻지 않아도 됩니다.</p>
+          </article>
+
+          <article class="card reveal">
+            <div class="viz viz-reach" aria-hidden="true">
+              <div class="reach">
+                <div class="reach-eye">시선 + 말</div>
+                <div class="reach-hand">손이 닿는 범위</div>
+              </div>
+              <svg class="ico" viewBox="0 0 24 24"><circle cx="16" cy="4" r="1"/><path d="m18 19 1-7-6 1"/><path d="m5 8 3-3 5.5 3-2.36 3.5"/><path d="M4.24 14.5a5 5 0 0 0 6.88 6"/><path d="M13.76 17.5a5 5 0 0 0-6.88-6"/></svg>
+            </div>
+            <h3>손이 닿지 않는 곳은 눈으로</h3>
+            <p>휠체어를 탄 손님도 화면 위쪽 메뉴를 시선과 말로 고릅니다.</p>
+          </article>
+
+          <article class="card span-2 reveal">
+            <div class="viz viz-voice" aria-hidden="true">
+              <p class="v-line is-on"><span>화면 앞 손님</span>“따뜻한 걸로 하나”</p>
+              <p class="v-line"><span>뒤에 선 사람</span>“이따 뭐 먹을래?”</p>
+              <p class="v-line"><span>옆 테이블</span>“여기 진동벨 울렸어”</p>
+            </div>
+            <h3>주문하는 사람 말만 듣습니다</h3>
+            <p>입 움직임과 목소리를 맞춰, 화면 앞 손님의 말만 듣습니다. 줄 선 사람들의 대화는 흘려듣습니다.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- RETROFIT -->
+    <section class="paper retrofit" id="retrofit">
+      <div class="wrap retro-grid">
+        <div>
+          <p class="eyebrow reveal">도입</p>
+          <h2 class="reveal">바꾸지 말고,<br>붙이세요.</h2>
+          <p class="lead reveal">카메라와 마이크가 든 작은 모듈을 지금 쓰는 키오스크 위에 붙입니다. 화면 위에 안내를 겹쳐 띄우고, 쓰던 주문 화면을 그대로 조작합니다.</p>
+          <ul class="retro-list">
+            <li class="reveal"><b>2026.1.28</b><span>이미 설치된 키오스크까지 접근성 의무가 전면 적용됐습니다.</span></li>
+            <li class="reveal"><b>3,482대</b><span>배리어프리 키오스크는 아직 이만큼뿐입니다. 교체하면 대당 수백만 원이 듭니다.</span></li>
+            <li class="reveal"><b>수정 없이</b><span>Windows·Android 기반 키오스크 소프트웨어를 고치지 않고 동작하는 것을 목표로 합니다.</span></li>
+          </ul>
+          <p class="fineprint reveal">※ 보조기기 인정 여부와 과기정통부 접근성 검증기준 적합성은 검토 중입니다.</p>
+        </div>
+        <figure class="retro-fig reveal" aria-label="기존 키오스크 위에 키오 모듈을 붙인 그림">
+          <svg viewBox="0 0 360 520" aria-hidden="true">
+            <defs>
+              <filter id="soft" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="10"/></filter>
+            </defs>
+            <rect x="108" y="18" width="144" height="30" rx="15" fill="#BDF43A" filter="url(#soft)" opacity=".55"/>
+            <rect x="108" y="18" width="144" height="30" rx="15" fill="#BDF43A"/>
+            <circle cx="138" cy="33" r="2.6" fill="#0B1400"/>
+            <circle cx="180" cy="33" r="7" fill="#0B1400"/>
+            <circle cx="180" cy="33" r="2.6" fill="#BDF43A"/>
+            <circle cx="222" cy="33" r="2.6" fill="#0B1400"/>
+            <rect x="80" y="56" width="200" height="330" rx="24" fill="#fff" stroke="#121310" stroke-width="2.2"/>
+            <rect x="96" y="74" width="168" height="270" rx="12" fill="#ECE8DE"/>
+            <g fill="#fff">
+              <rect x="106" y="98" width="70" height="62" rx="9"/><rect x="184" y="98" width="70" height="62" rx="9"/>
+              <rect x="106" y="168" width="70" height="62" rx="9"/><rect x="184" y="168" width="70" height="62" rx="9"/>
+              <rect x="106" y="238" width="70" height="62" rx="9"/><rect x="184" y="238" width="70" height="62" rx="9"/>
+            </g>
+            <rect x="106" y="310" width="148" height="24" rx="8" fill="#221A14"/>
+            <rect x="180" y="164" width="78" height="70" rx="12" fill="none" stroke="#9BD81E" stroke-width="3.2"/>
+            <circle cx="130" cy="130" r="20" fill="rgba(255,255,255,.65)" stroke="rgba(18,19,16,.18)"/>
+            <rect x="150" y="360" width="60" height="8" rx="4" fill="#121310"/>
+            <rect x="162" y="386" width="36" height="100" fill="#121310"/>
+            <rect x="106" y="484" width="148" height="16" rx="8" fill="#121310"/>
+          </svg>
+          <figcaption>
+            <span class="callout c1"><i></i>광각 카메라 · 시선과 입 움직임</span>
+            <span class="callout c2"><i></i>마이크 어레이 · 화자 분리</span>
+            <span class="callout c3"><i></i>온디바이스 AI · 영상은 밖으로 나가지 않음</span>
+          </figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- PRINCIPLES -->
+    <section class="principles" id="principles">
+      <div class="wrap">
+        <p class="eyebrow reveal">원칙</p>
+        <h2 class="reveal">믿을 수 있어야 쓸 수 있습니다.</h2>
+        <div class="pr-grid">
+          <article class="pr reveal">
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M15 2v2M15 20v2M2 15h2M2 9h2M20 15h2M20 9h2M9 2v2M9 20v2"/></svg>
+            <h3>영상은 기기 밖으로 나가지 않습니다</h3>
+            <p>시선과 입 움직임은 기기 안에서만 처리하고, 영상을 저장하지 않습니다.</p>
+          </article>
+          <article class="pr reveal">
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.53 13.53 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><path d="M2 2l20 20"/></svg>
+            <h3>얼굴을 알아보지 않습니다</h3>
+            <p>누구인지 식별하지 않습니다. 화면 앞에 있는 동안만 손님을 구분합니다.</p>
+          </article>
+          <article class="pr reveal">
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <h3>돈이 나가는 일은 손님이 직접</h3>
+            <p>결제·전송·취소는 대신 누르지 않습니다. 큰 글씨와 음성으로 확인한 뒤 손님이 누릅니다.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- CTA -->
+    <section class="cta" id="cta">
+      <div class="cta-glow" aria-hidden="true"></div>
+      <div class="wrap">
+        <h2 class="reveal">키오스크를<br>배우지 않아도 되는 세상.</h2>
+        <p class="reveal">사람이 키오스크에 맞추지 않아도 됩니다. 키오가 사람에게 맞춥니다.</p>
+        <a class="btn btn-lime reveal" href="#demo" data-replay>데모 다시 보기
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+        </a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <div class="wrap foot-grid">
+      <div class="foot-brand">
+        <a class="brand" href="#top" aria-label="키오 처음으로">
+          <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><rect x="2.5" y="7.5" width="27" height="17" rx="8.5" fill="none" stroke="currentColor" stroke-width="2.2"/><circle cx="19.5" cy="16" r="4.2" fill="#BDF43A"/></svg>
+          <span>키오</span><em>Kio</em>
+        </a>
+        <p>ambition-us 해커톤 · 팀 그랩크레딧타오자율</p>
+      </div>
+      <div class="foot-src">
+        <p>출처</p>
+        <ol>
+          <li><a href="https://www.nia.or.kr/site/nia_kor/ex/bbs/View.do?cbIdx=81623&amp;bcIdx=27832&amp;parentSeq=27832" target="_blank" rel="noopener">과기정통부·NIA, 2025 디지털정보격차 실태조사</a></li>
+          <li><a href="https://m.news.nate.com/view/20260421n30845" target="_blank" rel="noopener">서울AI재단, 2025 서울시민 디지털 역량 실태조사 보도</a></li>
+          <li><a href="https://www.dailian.co.kr/news/view/1695711" target="_blank" rel="noopener">배리어프리 키오스크 등록 대수·전국 추정 대수 보도</a></li>
+          <li><a href="https://www.mt.co.kr/policy/2026/01/28/2026012716433263943" target="_blank" rel="noopener">배리어프리 키오스크 전면 의무화 보도 (2026.1.28)</a></li>
+        </ol>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

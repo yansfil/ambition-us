@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gaze → Kio · Team 그랩크레딧타오자율</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23070807'/%3E%3Crect x='5' y='10' width='22' height='12' rx='6' fill='none' stroke='%23f4f4ef' stroke-width='2'/%3E%3Ccircle cx='19' cy='16' r='3.2' fill='%23BDF43A'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&display=swap">
+  <style>
+    :root {
+      --bg: #070807;
+      --card: #0f110f;
+      --ink: #f4f4ef;
+      --muted: #a3a69f;
+      --dim: #6f726b;
+      --line: rgba(255, 255, 255, 0.09);
+      --line-2: rgba(255, 255, 255, 0.16);
+      --lime: #bdf43a;
+      --lime-deep: #9bd81e;
+      --lime-ink: #0b1400;
+      --font: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, "Apple SD Gothic Neo", sans-serif;
+      --serif: "Instrument Serif", ui-serif, Georgia, serif;
+      --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; background: #000; }
+    body { font-family: var(--font); color: var(--ink); -webkit-font-smoothing: antialiased; word-break: keep-all; overflow: hidden; }
+    ul, ol { list-style: none; }
+
+    /* ---------- stage & scaling ---------- */
+    .deck { position: fixed; inset: 0; display: grid; place-items: center; }
+    .slide {
+      position: absolute; left: 50%; top: 50%;
+      width: 1920px; height: 1080px; overflow: hidden;
+      background: var(--bg);
+      transform: translate(-50%, -50%) scale(var(--s, 1));
+      opacity: 0; pointer-events: none; transition: opacity 0.45s ease;
+    }
+    .slide.on { opacity: 1; pointer-events: auto; }
+    .grid-bg {
+      position: absolute; inset: 0; pointer-events: none;
+      background-image: linear-gradient(rgba(255,255,255,.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.04) 1px, transparent 1px);
+      background-size: 64px 64px;
+      -webkit-mask-image: radial-gradient(ellipse 60% 70% at 78% 40%, #000 10%, transparent 70%);
+      mask-image: radial-gradient(ellipse 60% 70% at 78% 40%, #000 10%, transparent 70%);
+    }
+    .glow { position: absolute; width: 1200px; height: 1000px; border-radius: 50%; background: radial-gradient(closest-side, rgba(189,244,58,.14), rgba(189,244,58,.03) 55%, transparent); pointer-events: none; }
+
+    .pad { position: absolute; inset: 64px 88px 60px; }
+    .top { display: flex; align-items: center; justify-content: space-between; height: 36px; }
+    .brand { display: flex; align-items: center; gap: 12px; font-size: 22px; font-weight: 800; letter-spacing: -0.02em; }
+    .brand svg { width: 34px; height: 34px; }
+    .brand em { font-family: var(--serif); font-style: italic; font-weight: 400; font-size: 22px; color: var(--muted); }
+    .team { display: inline-flex; align-items: center; gap: 12px; padding: 9px 18px 9px 14px; border-radius: 99px; border: 1px solid var(--line-2); background: rgba(255,255,255,.03); font-size: 17px; color: var(--muted); }
+    .team i { width: 8px; height: 8px; border-radius: 50%; background: var(--lime); box-shadow: 0 0 10px var(--lime); }
+    .team b { color: var(--ink); font-weight: 750; letter-spacing: -0.01em; }
+    .team span { font-family: var(--mono); font-size: 14px; color: var(--dim); }
+    .count { font-family: var(--mono); font-size: 15px; color: var(--muted); }
+    .count b { color: var(--lime); font-weight: 600; }
+
+    .eyebrow { display: inline-flex; align-items: center; gap: 12px; font-family: var(--mono); font-size: 18px; font-weight: 500; letter-spacing: 0.08em; color: var(--lime); }
+    .eyebrow i { width: 10px; height: 10px; border-radius: 50%; background: var(--lime); box-shadow: 0 0 14px var(--lime); }
+    h1 { margin-top: 24px; font-size: 84px; font-weight: 800; letter-spacing: -0.05em; line-height: 1.06; }
+    h1 mark { background: none; color: var(--lime); }
+    .sub { margin-top: 26px; font-size: 25px; line-height: 1.6; color: var(--muted); }
+    .sub b { color: var(--ink); font-weight: 650; }
+
+    /* ==================== SLIDE 1 ==================== */
+    .s1 .glow { left: 980px; top: -160px; }
+    .s1-main { position: absolute; left: 0; right: 0; top: 108px; display: grid; grid-template-columns: 780px 1fr; gap: 60px; }
+    .s1-copy { padding-top: 26px; }
+    .stats { margin-top: 40px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; border-top: 1.5px solid var(--line-2); }
+    .stat { padding: 20px 20px 0 0; }
+    .stat + .stat { padding-left: 24px; border-left: 1px solid var(--line); }
+    .stat b { display: block; font-size: 52px; font-weight: 800; letter-spacing: -0.05em; line-height: 1; }
+    .stat b em { white-space: nowrap; }
+    .stat b em { font-family: var(--serif); font-style: italic; font-weight: 400; font-size: 0.55em; color: var(--muted); margin-left: 4px; letter-spacing: 0; }
+    .stat span { display: block; margin-top: 10px; font-size: 17.5px; color: var(--muted); line-height: 1.45; }
+    .note { margin-top: 22px; font-size: 15.5px; color: var(--dim); }
+
+    /* mac mock */
+    .mac {
+      position: relative; width: 100%; height: 612px; border-radius: 26px; overflow: hidden;
+      background:
+        radial-gradient(700px 420px at 85% 15%, rgba(189,244,58,.22), transparent 60%),
+        radial-gradient(600px 500px at 10% 100%, rgba(80,120,255,.22), transparent 60%),
+        linear-gradient(160deg, #1a1f1a, #0b0d12);
+      box-shadow: 0 0 0 1px rgba(255,255,255,.1), 0 60px 120px rgba(0,0,0,.6), 0 0 160px rgba(189,244,58,.08);
+    }
+    .mac-bar { position: absolute; left: 0; right: 0; top: 0; height: 34px; display: flex; align-items: center; gap: 22px; padding: 0 18px; background: rgba(20,22,20,.55); backdrop-filter: blur(20px); font-size: 14px; color: #e8e9e3; }
+    .mac-bar b { font-weight: 700; }
+    .mac-bar .r { margin-left: auto; display: flex; align-items: center; gap: 16px; }
+    .gz { display: inline-flex; align-items: center; gap: 7px; padding: 3px 10px 3px 7px; border-radius: 99px; background: rgba(189,244,58,.16); color: var(--lime); font-weight: 700; font-size: 12.5px; }
+    .gz svg { width: 18px; height: 18px; }
+    .apple { width: 13px; height: 15px; border-radius: 50% 50% 45% 45%; background: #e8e9e3; }
+
+    .win { position: absolute; left: 36px; top: 70px; width: 470px; height: 300px; border-radius: 14px; background: rgba(32,34,32,.9); box-shadow: 0 0 0 1px rgba(255,255,255,.1), 0 24px 50px rgba(0,0,0,.45); }
+    .win-bar { height: 40px; display: flex; align-items: center; gap: 8px; padding: 0 14px; border-bottom: 1px solid rgba(255,255,255,.07); font-size: 14px; font-weight: 600; color: #cfd1ca; }
+    .win-bar i { width: 12px; height: 12px; border-radius: 50%; background: #ff5f57; }
+    .win-bar i:nth-child(2) { background: #febc2e; }
+    .win-bar i:nth-child(3) { background: #28c840; margin-right: 12px; }
+    .files { display: grid; grid-template-columns: repeat(3, 1fr); row-gap: 18px; padding: 26px 18px; }
+    .file { display: flex; flex-direction: column; align-items: center; gap: 10px; font-size: 13.5px; color: #e4e5df; }
+    .doc { position: relative; width: 58px; height: 72px; border-radius: 6px; background: #f2f2ee; clip-path: polygon(0 0, 72% 0, 100% 22%, 100% 100%, 0 100%); }
+    .doc::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: 12px; height: 16px; border-radius: 3px; background: var(--c, #888); }
+    .folder { position: absolute; left: 700px; top: 318px; display: flex; flex-direction: column; align-items: center; gap: 10px; font-size: 14px; font-weight: 600; color: #f0f1eb; }
+    .folder i { position: relative; width: 100px; height: 76px; border-radius: 10px; background: linear-gradient(#7cc0fb, #4a9bf0); }
+    .folder i::before { content: ""; position: absolute; left: 0; top: -10px; width: 44px; height: 16px; border-radius: 8px 8px 0 0; background: #5aa9f4; }
+
+    .glass {
+      position: absolute; left: 66px; top: 114px; width: 120px; height: 120px; border-radius: 50%;
+      background: radial-gradient(120% 120% at 30% 18%, rgba(255,255,255,.42), rgba(255,255,255,.08) 45%, rgba(255,255,255,.02) 70%);
+      backdrop-filter: saturate(1.8) brightness(1.1);
+      box-shadow: inset 0 1px 2px rgba(255,255,255,.9), inset 0 0 0 1px rgba(255,255,255,.5), 0 14px 30px rgba(0,0,0,.35);
+    }
+    .glass::before { content: ""; position: absolute; left: 22%; right: 22%; top: 8%; height: 24%; border-radius: 50%; background: linear-gradient(rgba(255,255,255,.65), rgba(255,255,255,0)); }
+    .wave { position: absolute; right: -8px; bottom: 2px; display: flex; align-items: center; gap: 3px; height: 24px; padding: 0 8px; border-radius: 99px; background: rgba(18,20,16,.9); }
+    .wave i { width: 3px; border-radius: 2px; background: var(--lime); }
+    .agent {
+      position: absolute; left: 676px; top: 290px; width: 148px; height: 140px; border-radius: 20px;
+      border: 3px solid var(--lime);
+      box-shadow: inset 0 0 22px 3px rgba(189,244,58,.5), 0 0 0 1px rgba(40,70,0,.4);
+    }
+    .tag { position: absolute; display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 99px; background: var(--lime); color: var(--lime-ink); font-size: 16px; font-weight: 800; box-shadow: 0 6px 18px rgba(60,90,0,.35); white-space: nowrap; }
+    .tag small { font: 500 13px var(--mono); opacity: .7; }
+    .tag .en { font-weight: 600; opacity: .75; }
+    .arrow { position: absolute; inset: 0; pointer-events: none; }
+    .approve { position: absolute; left: 556px; top: 462px; width: 318px; padding: 16px 18px; border-radius: 18px; background: #141612; box-shadow: 0 0 0 1px rgba(255,255,255,.08), 0 20px 40px rgba(0,0,0,.5); font-size: 16px; line-height: 1.5; }
+    .approve p b { display: inline-block; margin-right: 8px; padding: 1px 9px; border-radius: 99px; background: var(--lime); color: var(--lime-ink); font-size: 12.5px; font-weight: 800; vertical-align: 2px; }
+    .approve div { display: flex; gap: 8px; margin-top: 12px; }
+    .approve span { padding: 7px 16px; border-radius: 99px; font-size: 14px; font-weight: 700; border: 1px solid var(--line-2); color: #d9dbd4; }
+    .approve span.ok { background: var(--lime); border-color: var(--lime); color: var(--lime-ink); }
+    .say { position: absolute; left: 36px; top: 470px; display: flex; align-items: center; gap: 14px; padding: 16px 22px; border-radius: 18px; background: rgba(12,14,12,.78); backdrop-filter: blur(14px); box-shadow: 0 0 0 1px rgba(255,255,255,.08); }
+    .say .who { font: 600 13px var(--mono); padding: 3px 10px; border-radius: 99px; border: 1px solid var(--line-2); color: var(--muted); }
+    .say p { font-size: 26px; font-weight: 650; letter-spacing: -0.02em; }
+    .say small { display: block; margin-top: 4px; font-size: 16px; font-weight: 500; color: var(--muted); letter-spacing: 0; }
+    .say p u { text-decoration: underline 3px var(--lime); text-underline-offset: 7px; color: var(--lime); }
+
+    /* pipeline */
+    .pipe { position: absolute; left: 0; right: 0; bottom: 0; }
+    .pipe-label { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 16px; }
+    .pipe-label span { font-family: var(--mono); font-size: 15px; color: var(--dim); letter-spacing: 0.06em; }
+    .pipe ol { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; }
+    .pipe li { position: relative; padding: 20px 20px 22px; border-radius: 20px; background: var(--card); border: 1px solid var(--line); }
+    .pipe li:not(:last-child)::after { content: ""; position: absolute; right: -12px; top: 50%; width: 10px; height: 10px; border-top: 2px solid var(--lime-deep); border-right: 2px solid var(--lime-deep); transform: translateY(-50%) rotate(45deg); z-index: 1; }
+    .pipe li em { font: normal 500 13px var(--mono); color: var(--lime); }
+    .pipe li b { display: block; margin-top: 8px; font-size: 24px; font-weight: 750; letter-spacing: -0.03em; }
+    .pipe li span { display: block; margin-top: 6px; font-size: 16px; color: var(--muted); line-height: 1.45; }
+    .pipe li.hl { border-color: rgba(189,244,58,.55); background: linear-gradient(180deg, rgba(189,244,58,.1), rgba(189,244,58,.02)); }
+
+    /* ==================== SLIDE 2 ==================== */
+    .s2 .glow { left: 560px; top: 40px; }
+    .s2-main { position: absolute; left: 0; right: 0; top: 108px; bottom: 0; display: grid; grid-template-columns: 760px 540px 1fr; gap: 54px; }
+    .s2-copy { padding-top: 26px; }
+    .map { margin-top: 44px; border-top: 1.5px solid var(--line-2); }
+    .map-head { display: grid; grid-template-columns: 250px 40px 1fr; padding: 14px 0 6px; font: 500 14px var(--mono); color: var(--dim); letter-spacing: 0.06em; }
+    .map li { display: grid; grid-template-columns: 250px 40px 1fr; align-items: center; padding: 15px 0; border-bottom: 1px solid var(--line); }
+    .map li .g { font-size: 19px; color: var(--muted); }
+    .map li .ar { width: 22px; height: 2px; background: var(--lime-deep); position: relative; }
+    .map li .ar::after { content: ""; position: absolute; right: -1px; top: -4px; width: 8px; height: 8px; border-top: 2px solid var(--lime-deep); border-right: 2px solid var(--lime-deep); transform: rotate(45deg); }
+    .map li .k { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+
+    .kiosk { position: relative; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 10px; }
+    .kiosk img {
+      width: 88%; height: auto; display: block;
+    }
+    .kiosk .cap { display: flex; align-items: center; gap: 12px; padding: 12px 18px; border-radius: 16px; background: rgba(12,14,12,.85); box-shadow: 0 0 0 1px rgba(255,255,255,.08); white-space: nowrap; }
+    .kiosk .cap .who { font: 600 12.5px var(--mono); padding: 3px 9px; border-radius: 99px; border: 1px solid var(--line-2); color: var(--muted); }
+    .kiosk .cap p { font-size: 22px; font-weight: 650; }
+    .kiosk .cap small { display: block; margin-top: 2px; font-size: 15px; font-weight: 500; color: var(--muted); }
+    .kiosk .cap u { text-decoration: underline 3px var(--lime); text-underline-offset: 6px; color: var(--lime); }
+
+    .why { padding-top: 34px; display: flex; flex-direction: column; }
+    .why h3 { font: 500 15px var(--mono); color: var(--dim); letter-spacing: 0.08em; }
+    .big { margin-top: 14px; display: flex; flex-direction: column; }
+    .big li { padding: 16px 0 18px; border-top: 1px solid var(--line); }
+    .big li:first-child { border-top: 1.5px solid var(--line-2); }
+    .big b { display: block; font-size: 64px; font-weight: 800; letter-spacing: -0.055em; line-height: 1; }
+    .big b em { font-family: var(--serif); font-style: italic; font-weight: 400; font-size: 0.5em; color: var(--muted); margin-left: 4px; letter-spacing: 0; }
+    .big span { display: block; margin-top: 10px; font-size: 18px; color: var(--muted); line-height: 1.45; }
+    .now { margin-top: 26px; display: flex; flex-direction: column; gap: 12px; }
+    .now div { display: grid; grid-template-columns: 76px 1fr; gap: 14px; align-items: baseline; padding: 16px 18px; border-radius: 18px; background: var(--card); border: 1px solid var(--line); }
+    .now div.hl { border-color: rgba(189,244,58,.55); background: linear-gradient(180deg, rgba(189,244,58,.1), rgba(189,244,58,.02)); }
+    .now em { font: normal 600 14px var(--mono); color: var(--lime); }
+    .now p { font-size: 18.5px; line-height: 1.45; color: #e4e5df; }
+    .now p b { color: var(--ink); }
+    .src { position: absolute; left: 0; bottom: -4px; max-width: 760px; font-size: 13.5px; line-height: 1.5; color: var(--dim); }
+
+    /* nav hint */
+    .hint { position: fixed; right: 18px; bottom: 14px; font: 12px var(--mono); color: #555; }
+
+    @media print {
+      @page { size: 1920px 1080px; margin: 0; }
+      html, body { overflow: visible; height: auto; background: var(--bg); }
+      .deck { position: static; display: block; }
+      .slide { position: relative; left: 0; top: 0; transform: none; opacity: 1; page-break-after: always; break-after: page; }
+      .hint { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="deck">
+
+    <!-- ============ SLIDE 1 — ENGINE ============ -->
+    <section class="slide s1 on" aria-label="Slide 1: the Gaze engine">
+      <div class="grid-bg"></div><div class="glow"></div>
+      <div class="pad">
+        <div class="top">
+          <div class="brand">
+            <svg viewBox="0 0 32 32" aria-hidden="true"><rect x="2.5" y="7.5" width="27" height="17" rx="8.5" fill="none" stroke="#f4f4ef" stroke-width="2.2"/><circle cx="19.5" cy="16" r="4.2" fill="#BDF43A"/></svg>
+            Gaze <em>engine</em>
+          </div>
+          <div class="team"><i></i>Team <b>그랩크레딧타오자율</b><span>ambition-us hackathon</span></div>
+          <span class="count"><b>01</b> / 02</span>
+        </div>
+
+        <div class="s1-main">
+          <div class="s1-copy">
+            <p class="eyebrow"><i></i>01 · THE ENGINE — GAZE</p>
+            <h1>Look at it.<br>Say <mark>“this.”</mark><br>The agent knows.</h1>
+            <p class="sub">A resident AI agent that sees where you look, hears what you say, and operates <b>any app on macOS</b>.</p>
+            <div class="stats">
+              <div class="stat"><b>8<em>modules</em></b><span>Built in parallel<br>by 8 coding agents</span></div>
+              <div class="stat"><b>807<em>checks</em></b><span>All passing (simulated);<br>on-device tuning underway</span></div>
+              <div class="stat"><b>15k<em>lines</em></b><span>Native Swift<br>menu-bar app</span></div>
+            </div>
+          </div>
+
+          <div class="mac" role="img" aria-label="Concept illustration of macOS. The user looks at a file while saying 이거를 (this) and at a folder while saying 이쪽으로 (over here). The agent frames the folder in lime and asks for approval to move the file.">
+            <div class="mac-bar">
+              <i class="apple"></i><b>Finder</b><span>File</span><span>Edit</span><span>View</span>
+              <div class="r">
+                <span class="gz"><svg viewBox="0 0 32 32"><rect x="2.5" y="7.5" width="27" height="17" rx="8.5" fill="none" stroke="currentColor" stroke-width="2.6"/><circle cx="19.5" cy="16" r="4.4" fill="currentColor"/></svg>Gaze · Listening</span>
+                <span>2:02 PM</span>
+              </div>
+            </div>
+
+            <div class="win">
+              <div class="win-bar"><i></i><i></i><i></i>Downloads</div>
+              <div class="files">
+                <div class="file"><i class="doc" style="--c:#f2a33a"></i>Pitch.key</div>
+                <div class="file"><i class="doc" style="--c:#6cb4f5"></i>Photo.png</div>
+                <div class="file"><i class="doc" style="--c:#9a9c94"></i>Notes.txt</div>
+                <div class="file"><i class="doc" style="--c:#f07a68"></i>Receipt.pdf</div>
+                <div class="file"><i class="doc" style="--c:#8db65a"></i>Budget.numbers</div>
+              </div>
+            </div>
+            <div class="folder"><i></i>Submit</div>
+
+            <svg class="arrow" viewBox="0 0 900 612" preserveAspectRatio="none" aria-hidden="true">
+              <defs><marker id="ah" markerWidth="10" markerHeight="10" refX="6" refY="5" orient="auto"><path d="M0 0 L8 5 L0 10" fill="none" stroke="#BDF43A" stroke-width="2"/></marker></defs>
+              <path d="M204 196 C 380 96, 600 170, 668 300" fill="none" stroke="#BDF43A" stroke-width="3" stroke-dasharray="2 11" stroke-linecap="round" marker-end="url(#ah)"/>
+            </svg>
+
+            <div class="glass"><div class="wave"><i style="height:7px"></i><i style="height:15px"></i><i style="height:10px"></i><i style="height:17px"></i><i style="height:8px"></i></div></div>
+            <span class="tag" style="left:158px;top:96px">이거를 <span class="en">this</span><small>0.62s</small></span>
+            <div class="agent"></div>
+            <span class="tag" style="left:650px;top:252px">이쪽으로 <span class="en">here</span><small>1.48s</small></span>
+
+            <div class="approve"><p><b>Gaze</b>Move Pitch.key to Submit?</p><div><span class="ok">Move</span><span>Cancel</span></div></div>
+            <div class="say"><span class="who">User</span><p>“<u>이거를</u> <u>이쪽으로</u> 옮겨줘”<small>“Move <u>this</u> over <u>here</u>.”</small></p></div>
+          </div>
+        </div>
+
+        <div class="pipe">
+          <div class="pipe-label"><span>PIPELINE — EVERY MOMENT IT'S ON IS INPUT</span><span>GAZE AND VOICE ON ONE TIMELINE</span></div>
+          <ol>
+            <li><em>01</em><b>See</b><span>Built-in camera · Vision<br>9-point calibration per display</span></li>
+            <li><em>02</em><b>Hear</b><span>Korean streaming STT<br>word-level speech timing</span></li>
+            <li class="hl"><em>03</em><b>Fuse</b><span>Bind each word to what you<br>looked at as you said it</span></li>
+            <li><em>04</em><b>Decide</b><span>Local fast path<br>+ Claude Sonnet 5.5</span></li>
+            <li><em>05</em><b>Guard</b><span>Auto · approve · deny<br>kill switch</span></li>
+            <li><em>06</em><b>Act · Show</b><span>Accessibility API control<br>Liquid Glass · lime frame</span></li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SLIDE 2 — PRODUCT ============ -->
+    <section class="slide s2" aria-label="Slide 2: Kio">
+      <div class="grid-bg"></div><div class="glow"></div>
+      <div class="pad">
+        <div class="top">
+          <div class="brand">
+            <svg viewBox="0 0 32 32" aria-hidden="true"><rect x="2.5" y="7.5" width="27" height="17" rx="8.5" fill="none" stroke="#f4f4ef" stroke-width="2.2"/><circle cx="19.5" cy="16" r="4.2" fill="#BDF43A"/></svg>
+            Kio <em>키오</em>
+          </div>
+          <div class="team"><i></i>Team <b>그랩크레딧타오자율</b><span>ambition-us hackathon</span></div>
+          <span class="count"><b>02</b> / 02</span>
+        </div>
+
+        <div class="s2-main">
+          <div class="s2-copy">
+            <p class="eyebrow"><i></i>02 · THE PRODUCT — KIO</p>
+            <h1>Same engine,<br><mark>at the kiosk.</mark></h1>
+            <p class="sub">For customers new to digital, Kio works like a counter clerk: <b>look and speak</b>, and Kio understands and taps for you. Payment is the one tap left to the customer.</p>
+            <div class="map">
+              <div class="map-head"><span>GAZE ENGINE</span><span></span><span>IN KIO</span></div>
+              <ul>
+                <li><span class="g">Liquid Glass gaze</span><i class="ar"></i><span class="k">Enlarges what you look at, in plain words</span></li>
+                <li><span class="g">Deictic binding</span><i class="ar"></i><span class="k">“This one,” “that one too”</span></li>
+                <li><span class="g">Hesitation cues</span><i class="ar"></i><span class="k">Speaks up first when you're lost</span></li>
+                <li><span class="g">Safety gate</span><i class="ar"></i><span class="k">Money moves only on your tap</span></li>
+                <li><span class="g">Any-app control (AX)</span><i class="ar"></i><span class="k">Retrofits onto existing kiosks</span></li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="kiosk">
+            <img src="assets/kiosk-bind.png" alt="Kio kiosk simulation with a Korean café menu. The moment the customer says 이거 (this one) while looking at yuja tea, a tag reading 이거 0.62s attaches to the yuja tea tile.">
+            <div class="cap"><span class="who">Customer</span><p>“응, <u>이거</u> 하나 따뜻한 걸로”<small>“Yeah, <u>this one</u>. Make it hot.”</small></p></div>
+          </div>
+
+          <div class="why">
+            <h3>WHY KIOSKS</h3>
+            <ul class="big">
+              <li><b>20.3<em>%p</em></b><span>Gap in kiosk use between<br>seniors and the general public</span></li>
+              <li><b>55.5<em>%</em></b><span>Seoul kiosk users 55+ who say<br>they are “not skilled” at it</span></li>
+              <li><b>0.7<em>%</em></b><span>Share of barrier-free kiosks<br>(3,482 of ~530k in Korea)</span></li>
+            </ul>
+            <div class="now">
+              <div class="hl"><em>WHY NOW</em><p>From <b>Jan 28, 2026</b>, accessibility duties cover every existing kiosk in Korea</p></div>
+              <div><em>NEXT</em><p>Wizard-of-Oz test at a senior center → café pilot</p></div>
+            </div>
+          </div>
+
+          <p class="src">Sources: MSIT·NIA 2025 Digital Divide Survey · Seoul AI Foundation 2025 Digital Literacy Survey · Korean press, 2026 &nbsp;|&nbsp; Kiosk screen from the landing-page simulation</p>
+        </div>
+      </div>
+    </section>
+  </div>
+  <p class="hint">← → to navigate</p>
+
+  <script>
+    (() => {
+      const slides = Array.from(document.querySelectorAll('.slide'));
+      let i = 0;
+      const fit = () => {
+        const s = Math.min(innerWidth / 1920, innerHeight / 1080);
+        slides.forEach((el) => el.style.setProperty('--s', s));
+      };
+      const go = (n) => {
+        i = Math.max(0, Math.min(slides.length - 1, n));
+        slides.forEach((el, j) => el.classList.toggle('on', j === i));
+        history.replaceState(null, '', `#${i + 1}`);
+      };
+      addEventListener('resize', fit);
+      addEventListener('hashchange', () => go((parseInt(location.hash.slice(1), 10) || 1) - 1));
+      addEventListener('keydown', (e) => {
+        if (['ArrowRight', 'PageDown', ' ', 'Enter'].includes(e.key)) { e.preventDefault(); go(i + 1); }
+        if (['ArrowLeft', 'PageUp', 'Backspace'].includes(e.key)) { e.preventDefault(); go(i - 1); }
+      });
+      document.addEventListener('click', (e) => go(e.clientX > innerWidth / 3 ? i + 1 : i - 1));
+      fit();
+      go((parseInt(location.hash.slice(1), 10) || 1) - 1);
+    })();
+  </script>
+</body>
+</html>
